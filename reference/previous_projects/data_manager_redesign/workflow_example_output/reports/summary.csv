@@ -1,0 +1,4 @@
+measurement_id,value,exceeds_threshold
+0,80.0,False
+1,120.0,True
+2,150.0,True

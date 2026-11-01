@@ -1,0 +1,39 @@
+{
+  "include": [
+    "Domain",
+    "UseCase",
+    "View",
+    "DataManager",
+    "typecheck/positive.py",
+    "typecheck/versioning_positive.py",
+    "typecheck/analysis_positive.py",
+    "examples",
+    "tools",
+    "main.py"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "strict": [
+    "Domain",
+    "UseCase",
+    "View",
+    "DataManager/serializers",
+    "DataManager/Excel/adapter.py",
+    "DataManager/analysis_files.py",
+    "DataManager/errors.py",
+    "DataManager/file_io.py",
+    "DataManager/model_conversion.py",
+    "DataManager/raw_readings.py",
+    "DataManager/report_export.py",
+    "DataManager/repositories.py",
+    "DataManager/services.py",
+    "DataManager/settings_versions.py",
+    "DataManager/summary.py",
+    "DataManager/versioning.py",
+    "DataManager/waveform.py",
+    "DataManager/__init__.py",
+    "typecheck/positive.py",
+    "typecheck/versioning_positive.py",
+    "typecheck/analysis_positive.py"
+  ]
+}

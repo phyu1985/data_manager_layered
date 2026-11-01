@@ -1,0 +1,4 @@
+{"__meta__": {"schema_version": 1, "mode": "mixed", "models": ["Event", "User"], "tag_field": "type"}}
+{"type": "User", "id": "u1", "name": "Alice"}
+{"type": "Event", "id": "e1", "message": "started"}
+{"type": "Event", "id": "e2", "message": "finished"}

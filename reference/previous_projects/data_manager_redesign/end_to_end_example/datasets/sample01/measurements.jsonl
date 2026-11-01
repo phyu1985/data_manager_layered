@@ -1,0 +1,5 @@
+{"__meta__": {"schema_version": 1, "mode": "single", "models": ["Measurement"]}}
+{"measurement_id": "3", "value": 20.0}
+{"measurement_id": "2", "value": 12.0}
+{"measurement_id": "1", "value": 8.0}
+{"measurement_id": "0", "value": 0.0}

@@ -1,0 +1,5 @@
+version: 3
+threshold: 110.0
+gain: 1.0
+retained_values:
+  operator_note: 以前は使用していたので維持

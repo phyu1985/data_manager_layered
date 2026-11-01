@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "threashold": 100,
+  "operator_note": "以前は使用していたので維持",
+  "draft_flag": "未使用なので廃止"
+}

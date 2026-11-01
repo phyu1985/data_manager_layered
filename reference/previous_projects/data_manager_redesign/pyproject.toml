@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "data-manager-redesign"
+version = "0.4.1"
+description = "Typed file repositories for models, rows and binary waveforms"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.7,<3", "portalocker>=2.8,<4", "ruamel.yaml>=0.18,<0.19", "numpy>=1.26,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pyright>=1.1.400,<2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+data_manager = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+
+[tool.pyright]
+include = ["src", "typecheck/positive.py", "typecheck/versioning_positive.py", "typecheck/analysis_positive.py", "examples"]
+extraPaths = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"

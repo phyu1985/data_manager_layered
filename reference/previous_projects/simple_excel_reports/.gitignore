@@ -1,0 +1,19 @@
+# Python環境・検証用パッケージ
+.venv/
+venv/
+.test-deps/
+
+# キャッシュ・テスト一時ファイル
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp-*/
+
+# 個人設定・環境変数
+.env
+.env.*
+!.env.example
+
+# ルート直下の生成済み帳票
+/帳票_*.xlsx
+/帳票テンプレート.xlsx

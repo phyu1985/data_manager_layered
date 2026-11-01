@@ -1,0 +1,4 @@
+version: 3
+threshold: 18.0
+gain: 1.0
+retained_values: {}
