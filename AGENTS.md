@@ -42,3 +42,26 @@
 - Domainはファイルを開かない。画面とprintはView、例の表示はexamplesへ置く。
 - referenceは過去資料の保管であり、現実装・通常テスト・型チェックの対象にしない。
 - requirementsは外部依存だけを管理する。検証はルートREADMEのコマンドを使う。
+
+`typecheck/documents_negative.py`は2件のreportArgumentTypeが期待結果。CSV・JSONLの利用者メタはRowsDocument / load_document / save_documentで扱い、JSONLの型照合メタと混ぜない。
+
+## 今回の合意
+
+- CSVの新規呼出はCsvOptions一つへ揃える。旧3名は移行用の同一型の別名。
+- KVの保存文法識別行は出力・要求しない。既存自由コメント・元配置の保存は対象外。
+- 解析編集は保存領域の固定管理場所を共有し、失効したセッションの保存・後始末を拒否する。所有者情報を時間経過だけで自動破棄しない。
+- 未提示形式は架空例として明示し、実ファイル対応済みと表現しない。
+- 今回は新規テストケースを増やさず、既存ケースの仕様変更分と実行例で確認する。実SMB・Linux接続は別途確認事項。
+
+## 名前とI/F
+
+- Repositoryはload(path)/save(path,value)、FileServiceは構成済みパスに対するload()/save(value)/save_as(path,value)とする。読取/書込専用はFileReader/FileWriterを選ぶ。
+- 版変換の有無をServiceの呼び方へ漏らさず、Versioned…Repositoryへ委譲する。
+- 解析の編集管理はAnalysisWorkspace、加工入力の組立てはUseCase.processing、外部反映はExternalUpdaterとする。
+- 旧名は移行用として区別し、現行例・説明へ新旧の流儀を混在させない。
+
+## 計算と反映
+
+- 計算関数は入力Presetsを変更せず、必要な計算結果を返す。UseCaseが結果を明示的に反映し、変更対象を選んで保存する。
+- AnalysisWorkspaceは編集権と保存を管理する。解析アルゴリズムを持たせない。
+- コメントは役割・契約・判断理由へ絞る。明白な処理の言い換えや過去の修正経緯を積み重ねない。

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, assert_type
 
 from pydantic import BaseModel
-from DataManager import HeaderReader, ObjectFileService, ObjectRepository, RowsFileService, RowsRepository, WaveformArray, WaveformFileService, WaveformObject, WaveformOptions, WaveformRepository
+from DataManager import FileService, FileReader, HeaderReader, ObjectRepository, RowsFileService, RowsRepository, WaveformArray, WaveformFileService, WaveformObject, WaveformOptions, WaveformRepository
 
 
 class User(BaseModel):
@@ -22,9 +22,10 @@ def examples(user: User, event: Event):
     assert_type(objects.load("user.yaml"), User)
     assert_type(objects.load("user.txt"), User)
     objects.save("user.json", user)
-    object_service = ObjectFileService(repository=objects, path="user.json")
+    object_service = FileService(repository=objects, path="user.json")
     assert_type(object_service.load(), User)
     object_service.save(user)
+    object_service.save_as("user-copy.json", user)
 
     single = RowsRepository(model=User, base_directory=Path("data"))
     assert_type(single.load("users.jsonl"), list[User])
@@ -35,6 +36,9 @@ def examples(user: User, event: Event):
     rows = mixed.load("events.jsonl")
     assert_type(rows, list[User | Event])
     mixed.save("events.jsonl", [user, event])
+    generic_rows = FileService(repository=mixed, path="events.jsonl")
+    assert_type(generic_rows.load(), list[User | Event])
+    generic_rows.save([user, event])
     rows_service = RowsFileService(repository=mixed, path="events.jsonl")
     assert_type(rows_service.load(), list[User | Event])
     rows_service.append([user, event])
@@ -56,6 +60,8 @@ def waveform_examples(header_reader: HeaderReader):
     )
     assert_type(repository.load("wave.bin"), WaveformObject)
     assert_type(repository.peek("wave.bin"), WaveformArray)
+    reader = FileReader(repository=repository, path="wave.bin")
+    assert_type(reader.load(), WaveformObject)
     waveform_service = WaveformFileService(repository=repository, path="wave.bin")
     assert_type(waveform_service.load(), WaveformObject)
     assert_type(waveform_service.peek(), WaveformArray)

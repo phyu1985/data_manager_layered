@@ -13,6 +13,7 @@ EXPECTED_COUNTS = {
     "services_negative.py": 3,
     "versioning_negative.py": 2,
     "analysis_negative.py": 2,
+    "documents_negative.py": 2,
 }
 
 

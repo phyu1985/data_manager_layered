@@ -8,11 +8,12 @@ from typing import Any
 import pytest
 
 from DataManager import ConfigurationError, ObjectRepository, RowsRepository, SerializationError, VersionConverter
-from UseCase.analysis import AnalysisService
+from UseCase.processing import load_processing_presets
+from UseCase.analysis import AnalysisWorkspace
 from Domain.processing import process_data
 from DataManager.report_export import ReportExportService
 from Domain.reporting import ReportRow, build_report_rows
-from DataManager.settings_versions import create_settings_service
+from DataManager.settings_versions import create_settings_repository
 
 
 def test_chain_converts_both_directions_without_mutating_input():
@@ -76,7 +77,7 @@ def test_retained_and_discarded_fields_survive_restart_as_intended(tmp_path: Pat
     repository = ObjectRepository(model=dict, base_directory=tmp_path)
     repository.save("old.json", {"version": 2, "threashold": 4.0, "operator_note": retained_value, "draft_flag": "discard"})
     source_bytes = (tmp_path / "old.json").read_bytes()
-    first_service = create_settings_service(tmp_path)
+    first_service = create_settings_repository(tmp_path)
     document = first_service.load("old.json")
     document.settings.threshold = 8.0
     first_service.save(f"latest.{extension}", document)
@@ -84,7 +85,7 @@ def test_retained_and_discarded_fields_survive_restart_as_intended(tmp_path: Pat
     # サービスを作り直しても、元ファイルなしで維持対象だけが引き継がれる。
     assert (tmp_path / "old.json").read_bytes() == source_bytes
     (tmp_path / "old.json").unlink()
-    second_service = create_settings_service(tmp_path)
+    second_service = create_settings_repository(tmp_path)
     restored = second_service.load(f"latest.{extension}")
     restored.settings.gain = 2.0
     second_service.save("export.json", restored, target_version=2)
@@ -95,7 +96,7 @@ def test_retained_and_discarded_fields_survive_restart_as_intended(tmp_path: Pat
 
 def test_yaml_versioned_overwrite_does_not_resurrect_removed_keys(tmp_path: Path):
     (tmp_path / "settings.yaml").write_text("version: 2\nthreashold: 4\ndraft_flag: discard\n", encoding="utf-8")
-    service = create_settings_service(tmp_path)
+    service = create_settings_repository(tmp_path)
     document = service.load("settings.yaml")
     with pytest.raises(FileExistsError):
         service.save("settings.yaml", document)
@@ -104,10 +105,10 @@ def test_yaml_versioned_overwrite_does_not_resurrect_removed_keys(tmp_path: Path
 
 
 def test_reanalysis_saves_only_settings_and_reload_reads_manual_edit(tmp_path: Path):
-    settings = create_settings_service(tmp_path)
+    settings = create_settings_repository(tmp_path)
     (tmp_path / "source.json").write_text('{"version":2,"threashold":3}', encoding="utf-8")
-    application = AnalysisService(tmp_path / "analysis")
-    processing, retained = application.load_processing(tmp_path / "source.json", [1, 5])
+    application = AnalysisWorkspace(tmp_path / "analysis")
+    processing, retained = load_processing_presets(tmp_path / "source.json", [1, 5])
     presets = process_data(processing)
     application.save_initial(presets, retained_values=retained)
     measurements_path = tmp_path / "analysis" / "measurements.jsonl"
@@ -131,17 +132,17 @@ def test_flat_presets_api_preserves_legacy_values_without_exposing_edit_metadata
         '{"version":2,"threashold":3,"operator_note":"keep","draft_flag":"discard"}',
         encoding="utf-8",
     )
-    analysis = AnalysisService(tmp_path / "analysis")
-    processing, retained = analysis.load_processing(source, [1, 5])
+    analysis = AnalysisWorkspace(tmp_path / "analysis")
+    processing, retained = load_processing_presets(source, [1, 5])
     analysis.save_initial(process_data(processing), retained_values=retained)
     source.unlink()
 
     # 再生成したサービスでも、Presetsだけを編集して旧版へ戻せる。
-    analysis = AnalysisService(tmp_path / "analysis")
+    analysis = AnalysisWorkspace(tmp_path / "analysis")
     with analysis.edit() as presets:
         presets.threshold = 8
         analysis.save_settings(presets, overwrite=True)
-        analysis.save_settings(presets, path="export.json", target_version=2)
+        analysis.export_settings("export.json", presets, target_version=2)
 
     exported = ObjectRepository(model=dict, base_directory=analysis.directory).load("export.json")
     assert exported == {"version": 2, "threashold": 8, "operator_note": "keep"}

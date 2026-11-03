@@ -32,6 +32,9 @@ def read_example_header(stream: BinaryIO) -> WaveformHeader:
 
 def main():
     output_directory = Path("outputs/formats")
+    from DataManager.storage import Storage
+    if Storage.find(output_directory) is None:
+        Storage.initialize(output_directory)
     user = User(id="u1", name="Alice")
     user_repository = ObjectRepository(model=User, base_directory=output_directory)
     for extension in ("json", "yaml", "txt"):

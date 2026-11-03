@@ -4,12 +4,15 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from DataManager.storage import Storage
 from DataManager import ObjectRepository
-from UseCase.analysis import AnalysisService
+from UseCase.processing import load_processing_presets
+from UseCase.analysis import AnalysisWorkspace
 from Domain.processing import process_data
-from DataManager.report_export import ReportExportService
+from DataManager.report_repository import ReportRepository
+from DataManager.services import FileWriter
 from Domain.reporting import build_report_rows
-from UseCase.external_updates import ExternalUpdateService
+from UseCase.external_updates import ExternalUpdater
 from DataManager.summary import create_summary_writer
 
 
@@ -18,19 +21,21 @@ def run(output_directory: Path, *, include_excel: bool = False):
     """
     # 例の再実行で以前の結果を壊さない。利用者が新しい保存先を選ぶ。
     output_directory.mkdir(parents=True, exist_ok=False)
+    if Storage.find(output_directory) is None:
+        Storage.initialize(output_directory)
     source_repository = ObjectRepository[dict[str, Any]](model=dict, base_directory=output_directory)
     source_repository.save("legacy.json", {
         "version": 2, "threashold": 100,
         "operator_note": "以前は使用していたので維持", "draft_flag": "未使用なので廃止",
     })
 
-    analysis = AnalysisService(output_directory / "analysis")
-    processing, retained_values = analysis.load_processing(
+    analysis = AnalysisWorkspace(output_directory / "analysis")
+    processing, retained_values = load_processing_presets(
         (output_directory / "legacy.json").resolve(), [80, 120, 150],
     )
     presets = process_data(processing)
     analysis.save_initial(presets, retained_values=retained_values)
-    external_updates = ExternalUpdateService(analysis, targets={
+    external_updates = ExternalUpdater(analysis, targets={
         "summary": create_summary_writer(output_directory / "latest_status"),
     })
     initial_update = external_updates.refresh()
@@ -44,7 +49,7 @@ def run(output_directory: Path, *, include_excel: bool = False):
         analysis.save_settings(presets, overwrite=True)
 
         # 旧形式は別の保存先へ出す。gainはV2にないためdowncastで除外される。
-        analysis.save_settings(presets, path="settings_v2.json", target_version=2)
+        analysis.export_settings("settings_v2.json", presets, target_version=2)
         result = external_updates.refresh(presets=presets)
         if result.failures:
             print("外部反映だけ失敗しました。「外部情報を更新」で再試行できます。")
@@ -58,13 +63,14 @@ def run(output_directory: Path, *, include_excel: bool = False):
     if include_excel:
         from DataManager.Excel.adapter import build_voltage_excel
 
-    report_service = ReportExportService(
+    report_repository = ReportRepository(
         output_directory / "reports", excel_writer=build_voltage_excel if include_excel else None,
     )
-    report_service.export("summary.csv", rows)
-    report_service.export("summary.jsonl", rows)
+    reports = FileWriter(repository=report_repository, path="summary.csv")
+    reports.save(rows)
+    reports.save_as("summary.jsonl", rows)
     if include_excel:
-        report_service.export("summary.xlsx", rows)
+        reports.save_as("summary.xlsx", rows)
 
     print(f"出力先: {output_directory.resolve()}")
     print("analysis: 最新設定・独立した測定行・V2互換出力")

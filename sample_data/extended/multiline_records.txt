@@ -1,0 +1,9 @@
+# name;value
+# unit;status
+#
+A;12.5
+V;ok
+#
+B;13.0
+V;ok
+#

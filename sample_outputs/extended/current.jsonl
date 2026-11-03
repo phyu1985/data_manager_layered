@@ -1,0 +1,3 @@
+{"__meta__": {"schema_version": 2, "mode": "dict", "models": []}, "metadata": {"version": 1, "device": "A001"}}
+{"time": 0, "value": 1.2}
+{"time": 1, "value": 1.5}

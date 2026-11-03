@@ -88,11 +88,9 @@ def serialize_json_object(
 
 
 class JsonSerializer:
-    """ 単一モデル・dictをJSON文字列と相互変換する。
+    """ 単一値とJSONを相互変換し、モデルの辞書化・検証はModelBindingへ委譲する。
 
-    保存はModelBindingでの辞書化からJSON生成へ、読み込みはJSON解析から
-    ModelBindingでの復元へ進む。ファイル操作と排他はRepositoryの責務。
-    出力設定は生成時に固定し、操作ごとにRepositoryから設定を組み立てさせない。
+    出力設定を保持し、Repositoryでの既定値の重複を防ぐ。
     """
 
     def __init__(self, *, dump_options: JsonDumpOptions | None = None):

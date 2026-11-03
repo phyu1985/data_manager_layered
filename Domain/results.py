@@ -1,4 +1,4 @@
-""" UseCaseが呼出元へ返す結果。ファイル操作や表示は持たない。
+""" 計算結果と実行結果を、表示・反映の担当へ渡す値。
 """
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +14,16 @@ class ReviewSummary:
     max_value: float
     exceeded_count: int
     order: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AnalysisResult:
+    """ 集計と並べ替え位置。計算時の入力を残し、変更後の誤適用を防ぐ。
+    """
+
+    summary: ReviewSummary
+    measurement_indices: tuple[int, ...]
+    source_measurements: tuple[tuple[str, float], ...]
 
 
 @dataclass(frozen=True)

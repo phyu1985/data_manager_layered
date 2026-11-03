@@ -216,7 +216,7 @@ def test_custom_text_separator_is_shared_by_dump_and_load(tmp_path):
     assert repository.load("value.txt") == value
 
 
-@pytest.mark.parametrize("text", ["# v0\na:1\n", "# v1\na:1\na:2\n", "# v1\na:bare\n", "# v1\na:1\na.b:2\n", "# v1\na:NaN\n", "# v1\nbad\n"])
+@pytest.mark.parametrize("text", ["a\n", "a:1\na:2\n", "a:\"unfinished\n", "# v1\na:1\na.b:2\n", "# v1\na:NaN\n", "# v1\nbad\n"])
 def test_custom_text_rejects_ambiguous_or_invalid_records(tmp_path, text):
     (tmp_path / "bad.txt").write_text(text)
     with pytest.raises(SerializationError):

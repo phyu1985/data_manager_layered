@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | JSON | ObjectRepository / .json | 単一モデル・dict |
 | YAML | ObjectRepository / .yaml, .yml | 単一モデル・dict、既存文書・テンプレートの合成 |
-| 独自テキストv1 | ObjectRepository / .txt | 単一モデル・dict |
+| KVテキスト | ObjectRepository / .txt | 単一モデル・dict |
 | CSV | RowsRepository / .csv | 同じ型のモデル一覧・dict一覧 |
 | JSONL | RowsRepository / .jsonl | 同じ型・混在モデルの一覧・dict一覧 |
 | 独自バイナリ波形 | WaveformRepository / load・peek | WaveformObject・NumPy配列。読み取り専用 |
@@ -60,6 +60,8 @@ ruamelの編集用状態は操作ごとに作り、Serializerの並行使用で�
 
 ## CSV
 
+先頭にkey,valueがあるCSVは[メタ情報の設定](METADATA.md)を使います。JSONLと同じload_document / save_documentで扱えます。
+
 ```python
 repository = RowsRepository(model=Measurement, base_directory=Path("data"))
 repository.save("measurements.csv", measurements)
@@ -74,7 +76,7 @@ Record.itemsのような可変長配列はCSVの初期対応範囲外です。JS
 列は全行のキーの和集合から出現順で作ります。1行目にない後続行の値も保存します。
 columnsを明示した場合、その列にない値を黙って捨てずエラーにします。
 0件の型付き一覧は、固定モデルから可能な列を決定して見出しを出します。
-空のdict一覧や列を決められないモデルでは、CSVDumpOptions(columns=(...))が必要です。
+空のdict一覧や列を決められないモデルでは、CsvOptions(columns=(...))が必要です。
 
 空文字は既定でNoneへ戻します。空文字を保持したい場合はempty_as_none=Falseを指定します。
 すべてのセルが空でも正当なレコードとして残し、空の物理行だけを飛ばします。
@@ -82,37 +84,29 @@ columnsを明示した場合、その列にない値を黙って捨てずエラ�
 dictモードのセルは基本的にstrまたはNoneであり、数値の型までの往復にはモデル検証を使います。
 
 ```python
-from DataManager import CSVDumpOptions, CSVLoadOptions, CsvSerializer
+from DataManager import CsvOptions, CsvSerializer
 
 serializer = CsvSerializer(
-    dump_options=CSVDumpOptions(include_header=False, columns=("name", "count")),
-    load_options=CSVLoadOptions(
-        has_header=False, columns=("name", "count"), empty_as_none=False,
-    ),
+    options=CsvOptions(include_header=False, has_header=False, columns=("name", "count"), empty_as_none=False),
     encoding="utf-8-sig",
 )
 ```
 
-## 独自テキストv1
+## KVテキスト
 
-旧v0の構造を基に、値をJSONリテラルとして記録します。
+KvSerializerはkey:JSON値を標準出力とし、保存文法の識別行を要求・出力しません。
+以前のCustomTextSerializer / CustomTextOptionsは同じ実装の互換名です。
+既存入力のコメントヘッダ・区切り・行末コメントはKvOptionsで指定します。
+詳細と人工入力は[拡張形式ガイド](EXTENSION_GUIDE.md)を参照してください。
 
 ```text
-# v1
 name:"001"
 details.count:3
-details.enabled:true
 optional:null
-items:[1,"a",null]
 ```
 
-文字列の数字、空文字、None、真偽値、配列、空の辞書を区別できます。
-モデルの値はPydanticでJSON向けに変換してから出力します。
-CustomTextOptions(separator="/")の指定は、保存と読み込みの両方に適用します。
-階層区切りを含むキー、コロン・改行を含むキー、重複や衝突はエラーです。
-
-旧v0は未運用という前提に基づき、自動互換を設けていません。
-# v0を読むと明示的にエラーになります。文字列化した旧データの型を推測して復元しません。
+JSON値により型を保ちます。通常文字列の既存入力は文字列として受け入れますが、
+壊れたJSONや重複キー・非有限数はエラーです。コメント・配置の保持は行いません。
 
 ## 波形：内部仕様を共有しない接続
 

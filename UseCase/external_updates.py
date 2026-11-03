@@ -7,25 +7,24 @@ import logging
 from DataManager.summary import ExternalWriter
 from Domain.models import AnalysisPresets
 from Domain.results import ExternalUpdateFailure, ExternalUpdateResult
-from UseCase.analysis import AnalysisService
+from UseCase.analysis import AnalysisWorkspace
 
 _logger = logging.getLogger(__name__)
 
 
-class ExternalUpdateService:
-    """ 保存後の自動反映と「外部情報を更新」ボタンで同じ処理を使う。
+class ExternalUpdater:
+    """ 保存済みデータを外部へ反映し、接続先ごとに成否を返す。
 
-    実DBは接続先の関数として渡す。コールバックは同じ保存物に何度実行しても
-    重複登録しない更新処理にする。このクラスはDBトランザクションを推測しない。
+    再試行できるよう、接続先の関数は繰り返しても重複登録しない実装にする。
     """
 
     def __init__(
-        self, application: AnalysisService, *, targets: Mapping[str, ExternalWriter],
+        self, workspace: AnalysisWorkspace, *, targets: Mapping[str, ExternalWriter],
     ):
         if not targets or any(not name for name in targets):
             raise ValueError("名前付きの外部反映先を一つ以上指定してください")
 
-        self._application = application
+        self._workspace = workspace
         self._targets = dict(targets)
 
     def refresh(
@@ -40,9 +39,8 @@ class ExternalUpdateService:
         if any(name not in self._targets for name in selected_names):
             raise ValueError("未登録の外部反映先です")
 
-        # 排他と保存済み読取は解析サービスへ委譲する。
-        # ここでは反映先の実行・失敗の収集だけを扱い、編集窓口の内部を参照しない。
-        with self._application.saved_snapshot(presets=presets) as snapshot:
+        # 未保存の編集値ではなく、Workspaceが確認した保存済みの値を送る。
+        with self._workspace.saved_snapshot(presets=presets) as snapshot:
             return self._update_targets(snapshot, selected_names)
 
     def _update_targets(
@@ -56,7 +54,7 @@ class ExternalUpdateService:
         for name in selected_names:
             try:
                 # 外部処理の変更が別接続先の入力や画面の編集値へ混入するのを防ぐ。
-                self._targets[name](self._application.directory, deepcopy(snapshot))
+                self._targets[name](self._workspace.directory, deepcopy(snapshot))
             except Exception as error:
                 _logger.exception("外部情報の更新に失敗しました: %s", name)
                 failures.append(ExternalUpdateFailure(target=name, error=error))
@@ -64,3 +62,7 @@ class ExternalUpdateService:
                 succeeded_targets.append(name)
 
         return ExternalUpdateResult(tuple(succeeded_targets), tuple(failures))
+
+
+# 旧名の移行用別名。外部への一方向の更新であり、汎用ファイル入出力ではない。
+ExternalUpdateService = ExternalUpdater

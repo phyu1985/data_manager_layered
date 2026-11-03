@@ -32,14 +32,14 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe main.py outputs/excel-run --report-format xlsx
 ```
 
-`requirements-dev.txt`はExcelと検証ツールを含みます。実行だけなら`requirements.txt`、Excelも使うなら`requirements-excel.txt`で足ります。
+`requirements-dev.txt`はExcelと検証ツールを含みます。実行だけなら`requirements.txt`、Excelは`requirements-excel.txt`、DataFrameは`requirements-pandas.txt`を使います。
 
-全工程の例は、未作成の出力先を指定します。同じ出力先を指定すると、既存データ保護のためエラーになります。`outputs/first-run`には設定YAML・測定JSONL・選択した帳票の3ファイルができます。加えて排他用ロックファイルが作られます。
+全工程の例は、未作成の出力先を指定します。同じ出力先を指定すると、既存データ保護のためエラーになります。`outputs/first-run`には設定YAML・測定JSONL・選択した帳票の3ファイルができます。保存領域のstorage.jsonとapplication_controlが作られます。解析フォルダへ個別の.lockを並べず、ガードを管理領域へ集約します。
 
 ## 普通のimportで呼ぶ
 
 ```python
-from UseCase.analysis import AnalysisService
+from UseCase.analysis import AnalysisWorkspace
 from Domain.models import AnalysisPresets
 from DataManager import ObjectRepository, RowsRepository
 ```
@@ -48,14 +48,19 @@ from DataManager import ObjectRepository, RowsRepository
 
 ## 読む順番
 
+まず[ファイル窓口と役割の整理](docs/FILE_INTERFACES.md)で、FileService / Repository / AnalysisWorkspaceの使い分けを確認できます。
+
 1. [何を狙った構成か・依存方向・クラス図](docs/ARCHITECTURE.md)
 2. [加工から再解析・帳票までの手順とコードの対応](docs/WORKFLOW.md)
 3. [ファイル一覧・旧構成からの移動先](docs/FILE_LAYOUT.md)
 4. [すべての実行例と出力の見方](examples/README.md)
 5. [版互換・独自形式を追加する場所](docs/EXTENDING.md)
 6. [検証結果と、実運用までに残っていること](VALIDATION.md)
-7. [各形式の詳しい仕様・オプション・波形の接続](docs/FORMATS.md)
-8. [元の説明資料・構成図・サンプルの一覧](reference/README.md)
+7. [拡張形式・Rows版変換・DataFrameの使い方](docs/EXTENSION_GUIDE.md)
+8. [保存領域の初期化・共有編集権・強制引継ぎ](docs/SHARED_EDITING.md)
+9. [CSV・JSONL共通のメタ情報API](docs/METADATA.md)
+10. [各形式の詳しい仕様・オプション・波形の接続](docs/FORMATS.md)
+11. [元の説明資料・構成図・サンプルの一覧](reference/README.md)
 
 ## 検証
 
@@ -69,3 +74,5 @@ from DataManager import ObjectRepository, RowsRepository
 GitHub Actionsにも同じ手順と全実行例のスモークテストを設定しています。`reference`は参照保管用で、現在のテスト・型チェック対象には含みません。
 
 実業務のモデル・独自形式・機密の波形境界規則は収録していません。サンプル計算を実際の加工・解析へ置き換える場所はDomainです。実運用上の制約を[こちら](docs/LIMITATIONS.md)に明記しています。公開ライセンスは未設定です。GitHubへ公開する際の利用条件は所有者が決定してください。
+
+共有の解析データを使う場合、保守担当者が保存領域をStorage.initializeで一度だけ初期化してください。AnalysisWorkspaceは初期化済み領域を必須にします。アプリが起動ごとに別の管理領域を作る方式ではありません。強制編集の例は`python -m examples.shared_editing outputs/shared`です。

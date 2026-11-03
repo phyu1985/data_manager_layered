@@ -1,7 +1,4 @@
-""" モデル固有の項目を知らずに、辞書化・検証する内部処理。
-
-aliasの逆引き、空文字の置換、未知キーの削除は行わない。
-入力の受け入れ方はモデルのPydantic設定に従う。
+""" モデルの辞書化・復元をまとめる。aliasや未知キーの扱いはPydantic設定に従う。
 """
 from __future__ import annotations
 
@@ -17,11 +14,9 @@ DataMode = Literal["single", "mixed", "dict"]
 
 
 class ModelBinding(Generic[ModelValue]):
-    """ 保存・復元に使える型と、共通のモデル変換規則を保持する。
+    """ 指定された型の辞書化と復元を担当する、Serializer共通の内部部品。
 
-    生成時に単一モデル・混在モデル・dictのどれを扱うか確定する。
-    保存時は指定型の値を辞書化し、復元時はSerializerが選んだクラスで検証する。
-    ファイル形式やtagの名前は扱わず、公開APIではこのクラスを利用側へ要求しない。
+    混在モデルの型判別はSerializerが担当し、選択したクラスを復元時に渡す。
     """
 
     def __init__(self, model: type[ModelValue] | tuple[type[ModelValue], ...]):
@@ -129,11 +124,11 @@ class ModelBinding(Generic[ModelValue]):
             raise SerializationError("指定されていない復元先です")
 
         if selected_model_class is dict:
-            # 復元先と辞書の構造は確認済み。castは生成や検証の代用ではない。
+            # dictモードはモデルを生成せず、呼出元と独立した辞書を返す。
             return cast(ModelValue, dict(data))
 
         if issubclass(selected_model_class, BaseModel):
-            # 実体の生成と値の検証はmodel_validateが行う。castだけで型を取り繕わない。
+            # 実体の生成・値の検証はPydantic、型注釈の対応付けだけをcastが担う。
             return cast(ModelValue, selected_model_class.model_validate(data))
 
         raise ConfigurationError("復元先はBaseModelまたはdictです")

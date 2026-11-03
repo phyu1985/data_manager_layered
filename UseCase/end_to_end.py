@@ -3,14 +3,17 @@
 from collections.abc import Callable, Sequence
 from math import isfinite
 from pathlib import Path
+from DataManager.storage import Storage
+from DataManager.analysis_files import AnalysisFiles
 from DataManager.raw_readings import read_raw
-from DataManager.report_export import ReportExportService
+from DataManager.report_repository import ReportRepository
+from DataManager.services import FileWriter
 from Domain.models import ProcessingPresets
 from Domain.processing import process_readings
 from Domain.analysis import analyze_readings
 from Domain.reporting import ReportFormat, build_report_rows
 from Domain.results import DemoResult, ReviewSummary as ReviewSummary
-from UseCase.analysis import AnalysisService
+from UseCase.analysis import AnalysisWorkspace, apply_analysis_result
 
 DEFAULT_RAW = Path(__file__).resolve().parents[1] / "sample_data" / "raw_readings.csv"
 
@@ -20,7 +23,7 @@ def list_analyses(directory: Path) -> list[Path]:
     """
     return [
         path for path in sorted(directory.iterdir())
-        if path.is_dir() and AnalysisService(path).exists()
+        if path.is_dir() and AnalysisFiles.exists_at(path)
     ]
 
 
@@ -42,7 +45,7 @@ def run(
 ) -> DemoResult:
     """ 新しい保存先で全工程を実行し、帳票は指定形式の一つだけを出力する。
     """
-    # 表示先はViewから受け取る。UseCase自身は標準出力や画面を操作しない。
+    # 表示方法をView側で選べるよう、進捗だけを通知する。
     def notify(message: str):
         if on_progress is not None:
             on_progress(message)
@@ -57,7 +60,6 @@ def run(
         raise ValueError("再解析のしきい値は有限値が必要です")
 
     # 1. Repositoryで実ファイルを読み、処理に必要な値をPresetsへ集める。
-    # 本例の条件は画面で指定した想定。外部設定を読む場合はAnalysisService.load_processingを使える。
     raw = read_raw(raw_path)
     notify(f"生データ読取: {raw_path.resolve()}（{len(raw)}件）")
     processing = ProcessingPresets(
@@ -66,10 +68,12 @@ def run(
     processed = process_readings(processing)
     notify(f"加工: 先頭値={processing.raw_values[0]:g}を基準に、倍率={gain:g}で補正")
 
-    # 2. 加工済みの一式を新規保存する。失敗時の後始末は既存サービスへ委譲する。
+    # 2. 加工済みの設定と測定を一式で新規保存する。
     output_directory.mkdir(parents=True, exist_ok=False)
+    if Storage.find(output_directory) is None:
+        Storage.initialize(output_directory)
     data_directory = output_directory / "datasets"
-    analysis = AnalysisService(data_directory / dataset)
+    analysis = AnalysisWorkspace(data_directory / dataset)
     analysis.save_initial(processed)
     notify(f"加工済み保存: {analysis.directory}")
 
@@ -77,28 +81,31 @@ def run(
     candidates = list_analyses(data_directory)
     notify("解析候補: " + ", ".join(path.name for path in candidates))
     selected = select_analysis(candidates, dataset)
-    analysis = AnalysisService(selected)
+    analysis = AnalysisWorkspace(selected)
 
-    # 4. 解析結果は確認順として測定JSONLへ保存する。条件は変えていないのでYAMLには触れない。
+    # 4. 計算結果を明示的に反映し、変更した測定JSONLだけを保存する。
     with analysis.edit() as presets:
-        first = analyze_readings(presets)
+        first_result = analyze_readings(presets)
+        apply_analysis_result(presets, first_result)
         analysis.save_measurements(presets, overwrite=True)
     notify("初回解析を保存しました")
 
     # 5. 一度閉じて、保存済みデータから再解析する。今回は条件も変えたので両方を更新する。
-    # 別名の結果ファイルは作らず、同じ一式へ最新の条件と確認順を保存する。
     with analysis.edit() as presets:
         presets.threshold = second_threshold
-        second = analyze_readings(presets)
+        second_result = analyze_readings(presets)
+        apply_analysis_result(presets, second_result)
         analysis.save_settings(presets, overwrite=True)
         analysis.save_measurements(presets, overwrite=True)
     notify("再解析を保存しました")
 
     # 6. 再読した最新状態から明細を作る。Excel等の出力処理へ解析ロジックを持ち込まない。
     rows = build_report_rows([analysis.load()])
-    reports = ReportExportService(output_directory)
     report_path = output_directory / f"report.{report_format}"
-    reports.export(report_path.resolve(), rows)
+    reports = FileWriter(repository=ReportRepository(output_directory), path=report_path.resolve())
+    reports.save(rows)
     notify(f"帳票: {report_path.resolve()}")
 
-    return DemoResult(analysis.directory, report_path.resolve(), first, second)
+    return DemoResult(
+        analysis.directory, report_path.resolve(), first_result.summary, second_result.summary,
+    )

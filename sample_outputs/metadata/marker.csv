@@ -1,0 +1,6 @@
+version,4
+device,A001
+[data]
+time,value
+0,1.2
+1,1.5

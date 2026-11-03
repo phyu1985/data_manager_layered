@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ValidationError
 
+from DataManager.documents import RowsDocument
 from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.model_conversion import ModelBinding, ModelValue
 from DataManager.serializers.json import parse_json_object, serialize_json_object
@@ -34,12 +35,9 @@ class JSONLLoadOptions:
 
 
 class JsonlSerializer:
-    """ 一覧をJSONLへ変換し、メタ情報とtagに基づいてモデルを復元する。
+    """ 一覧とJSONLを相互変換する。混在モデルだけ本文に平坦なtagキーを持つ。
 
-    保存時は先頭のメタ行と本文を作り、混在モデルにだけ平坦なtagキーを加える。
-    読み込み時はメタの一致を確認し、各行のtagから許可済みのクラスを選んで検証する。
-    本文だけの変換とメタ行の操作を分け、Repositoryが追記でも再利用できるようにする。
-    ファイルの読み書きやロックは扱わない。
+    メタと本文の処理を分け、全件保存と追記で同じ形式検証を使う。
     """
 
     def __init__(
@@ -149,10 +147,18 @@ class JsonlSerializer:
 
         return metadata
 
-    def serialize_metadata_line(self, model_binding: ModelBinding[ModelValue]) -> str:
+    def serialize_metadata_line(
+        self, model_binding: ModelBinding[ModelValue], *, metadata: dict[str, Any] | None = None,
+    ) -> str:
         """ 全件保存と新規追記に使う、改行付きのメタ行を返す。
         """
-        metadata_record = {"__meta__": self._build_metadata(model_binding)}
+        format_metadata = self._build_metadata(model_binding)
+        metadata_record: dict[str, Any] = {"__meta__": format_metadata}
+        # 型の照合情報と利用者の値は、同じ行の別項目に置く。版や業務キーの衝突を避ける。
+        if metadata is not None:
+            # 既存のv1はそのまま読み書きする。利用者メタ付きの新しい文書だけv2とする。
+            format_metadata["schema_version"] = 2
+            metadata_record["metadata"] = metadata
 
         return serialize_json_object(
             metadata_record,
@@ -165,14 +171,23 @@ class JsonlSerializer:
         serialized_text: str,
         model_binding: ModelBinding[ModelValue],
     ):
+        """ 追記前にも同じ規則で照合し、利用者のメタは既存の行に残す。
+        """
+        self.deserialize_metadata_line(serialized_text, model_binding)
+
+    def deserialize_metadata_line(
+        self, serialized_text: str, model_binding: ModelBinding[ModelValue],
+    ) -> dict[str, Any]:
         """ メタ行の構造と内容が、指定モデル・形式に一致するか確認する。
         """
         metadata_record = parse_json_object(serialized_text)
         expected_metadata = self._build_metadata(model_binding)
+        if "metadata" in metadata_record:
+            expected_metadata["schema_version"] = 2
         parsed_metadata = metadata_record.get("__meta__")
 
         # まずメタ専用行の構造を確認し、その後で設定との一致を調べる。
-        if set(metadata_record) != {"__meta__"} or not isinstance(parsed_metadata, dict):
+        if set(metadata_record) not in ({"__meta__"}, {"__meta__", "metadata"}) or not isinstance(parsed_metadata, dict):
             raise SerializationError("JSONLのメタ情報がRepositoryの型・形式と一致しません")
 
         actual_metadata = cast(dict[str, Any], parsed_metadata)
@@ -183,6 +198,12 @@ class JsonlSerializer:
             or actual_metadata != expected_metadata
         ):
             raise SerializationError("JSONLのメタ情報がRepositoryの型・形式と一致しません")
+
+        metadata = metadata_record.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise SerializationError("JSONLの利用者メタmetadataはオブジェクトが必要です")
+
+        return cast(dict[str, Any], metadata)
 
     def serialize_data_lines(
         self,
@@ -236,6 +257,20 @@ class JsonlSerializer:
 
         return metadata_line + data_lines
 
+    def dumps_document(
+        self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue], *,
+        metadata: dict[str, Any],
+    ) -> str:
+        """ 利用者メタと型の照合情報を先頭行へ保存し、本文は既存の変換へ委譲する。
+        """
+        if self._load_options.metadata == "absent":
+            raise ConfigurationError("利用者メタ付きJSONLにはmetadata='required'を使用してください")
+
+        return (
+            self.serialize_metadata_line(model_binding, metadata=metadata)
+            + self.serialize_data_lines(rows, model_binding)
+        )
+
     def deserialize_data_line(
         self,
         serialized_text: str,
@@ -263,6 +298,13 @@ class JsonlSerializer:
         serialized_text: str,
         model_binding: ModelBinding[ModelValue],
     ) -> list[ModelValue]:
+        """ 従来の入口では本文だけを返し、load_documentではメタも受け取れる。
+        """
+        return self.loads_document(serialized_text, model_binding).rows
+
+    def loads_document(
+        self, serialized_text: str, model_binding: ModelBinding[ModelValue],
+    ) -> RowsDocument[dict[str, Any], ModelValue]:
         """ JSONL文字列から、指定型の値のリストを復元する。
         """
         if self._load_options.metadata == "absent" and model_binding.data_mode == "mixed":
@@ -276,13 +318,14 @@ class JsonlSerializer:
         )
 
         # absentでは先頭から全行を本文として扱い、業務行をメタと推測して捨てない。
+        metadata: dict[str, Any] = {}
         if self._load_options.metadata == "required":
             first_line = next(numbered_lines, None)
 
             if first_line is None:
                 raise SerializationError("JSONLにメタ行がありません")
 
-            self.validate_metadata_line(first_line[1], model_binding)
+            metadata = self.deserialize_metadata_line(first_line[1], model_binding)
 
         restored_values: list[ModelValue] = []
 
@@ -292,4 +335,4 @@ class JsonlSerializer:
             except (SerializationError, ValidationError) as error:
                 raise SerializationError(f"JSONL行{line_number}: {error}") from error
 
-        return restored_values
+        return RowsDocument(metadata=metadata, rows=restored_values)

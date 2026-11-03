@@ -6,7 +6,7 @@ import pytest
 
 from DataManager import RowsRepository
 from Domain.models import ProcessingPresets
-from UseCase.analysis import AnalysisService
+from UseCase.analysis import AnalysisWorkspace, apply_analysis_result
 from Domain.analysis import analyze_readings
 from UseCase.end_to_end import list_analyses, run, select_analysis
 from Domain.processing import process_readings
@@ -36,7 +36,7 @@ def test_complete_flow_keeps_three_data_files_and_saves_latest_result(tmp_path: 
     assert result.second.exceeded_count == 1
     assert result.first.mean_value == result.second.mean_value == 10
 
-    saved = AnalysisService(result.analysis_directory).load()
+    saved = AnalysisWorkspace(result.analysis_directory).load()
     assert saved.threshold == 18
     assert [row.value for row in saved.measurements] == [20, 12, 8, 0]
 
@@ -63,17 +63,32 @@ def test_processing_and_reanalysis_do_not_change_raw_values_or_accumulate_gain()
     assert [row.value for row in presets.measurements] == [0, 16, 24, 40]
 
     presets.threshold = 18
+    before = presets.model_dump()
+    original_rows = tuple(presets.measurements)
     first = analyze_readings(presets)
-    values = {row.measurement_id: row.value for row in presets.measurements}
+    assert analyze_readings(presets) == first
+    assert presets.model_dump() == before
+    assert all(row is original for row, original in zip(presets.measurements, original_rows, strict=True))
+
+    apply_analysis_result(presets, first)
+    assert [row.measurement_id for row in presets.measurements] == list(first.summary.order)
+    assert all(presets.measurements[i] is original_rows[j] for i, j in enumerate(first.measurement_indices))
     second = analyze_readings(presets)
-    assert first == second
-    assert {row.measurement_id: row.value for row in presets.measurements} == values
+    apply_analysis_result(presets, second)
+    assert first.summary == second.summary
+    assert sorted(row.value for row in presets.measurements) == [0, 16, 24, 40]
+
+    presets.threshold = 20
+    changed = presets.model_dump()
+    with pytest.raises(ValueError, match="再計算"):
+        apply_analysis_result(presets, second)
+    assert presets.model_dump() == changed
 
 
 def test_selection_uses_saved_datasets_and_does_not_pick_incomplete_folder(tmp_path: Path):
     presets = process_readings(ProcessingPresets(threshold=10, gain=1, raw_values=[10, 20]))
     for name in ("one", "two"):
-        AnalysisService(tmp_path / name).save_initial(presets)
+        AnalysisWorkspace(tmp_path / name).save_initial(presets)
     (tmp_path / "incomplete").mkdir()
     (tmp_path / "incomplete" / "settings.yaml").write_text("version: 3", encoding="utf-8")
 
@@ -82,7 +97,7 @@ def test_selection_uses_saved_datasets_and_does_not_pick_incomplete_folder(tmp_p
     selected = select_analysis(candidates, "two")
     other_bytes = (tmp_path / "one" / "settings.yaml").read_bytes()
 
-    analysis = AnalysisService(selected)
+    analysis = AnalysisWorkspace(selected)
     with analysis.edit() as current:
         current.threshold = 30
         analysis.save_settings(current, overwrite=True)

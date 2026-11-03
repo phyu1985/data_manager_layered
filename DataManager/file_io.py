@@ -1,21 +1,25 @@
 """ 協調するプロセス間の排他と、ファイル単位の保存。
 
-置換先とは別のsidecarをロックする。ロック不能時のフォールバックは行わない。
+管理領域に固定数のガードを置く。ロック不能時のフォールバックは行わない。
 全件保存と直接追記の保証は異なる。追記の途中でのI/O障害は復旧の対象になる。
 """
 from __future__ import annotations
 
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import Callable, Generator
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
+import hashlib
 from math import isfinite
 import os
 from pathlib import Path
 import tempfile
+import time
 from typing import BinaryIO
 
 import portalocker
 
 from DataManager.errors import ConfigurationError
+
+CommitGuard = Callable[[Path], AbstractContextManager[None]]
 
 
 def validate_lock_timeout(timeout_seconds: float):
@@ -34,7 +38,7 @@ def resolve_file_path(base_directory: Path, path: str | Path) -> Path:
     if not candidate_path.is_absolute():
         candidate_path = base_directory / candidate_path
 
-    # パス表記の違いだけでsidecarロックが分かれないよう、実際の保存先へ揃える。
+    # パス表記の違いだけでガードが分かれないよう、実際の保存先へ揃える。
     return candidate_path.resolve()
 
 
@@ -45,8 +49,20 @@ def lock_file(path: Path, *, timeout_seconds: float) -> Generator[None, None, No
     validate_lock_timeout(timeout_seconds)
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    # 保存対象そのものは置換されるため、置換されないsidecarをロック対象にする。
-    lock_file_path = path.with_name(path.name + ".lock")
+    # 保存対象は置換されるため、管理領域の変化しないガードをロックする。
+    from DataManager.storage import Storage
+
+    storage = Storage.find(path.parent)
+    if storage is not None:
+        with storage.file_guard(path, timeout_seconds):
+            yield
+        return
+
+    # 領域外の単独ファイル利用も、データの隣へ個別の.lockを並べない。
+    directory = path.parent / ".data_manager_locks"
+    directory.mkdir(exist_ok=True)
+    bucket = int(hashlib.sha256(path.name.casefold().encode()).hexdigest()[:8], 16) % 64
+    lock_file_path = directory / f"{bucket:02}.lock"
 
     with portalocker.Lock(
         str(lock_file_path),
@@ -59,21 +75,32 @@ def lock_file(path: Path, *, timeout_seconds: float) -> Generator[None, None, No
 
 
 @contextmanager
-def lock_directory(directory: Path, *, timeout_seconds: float = 0) -> Generator[Path, None, None]:
-    """ 同じフォルダの編集を、読み込み開始から終了まで一人に限定する。
+def lock_directory(directory: Path, *, timeout_seconds: float = 0, force: bool = False) -> Generator[Path, None, None]:
+    """ フォルダ単位の編集権の互換入口。保存時検証が必要ならStorage.editを使う。
 
-    withの間保持する協調ロック。短時間のファイルI/Oロックとは役割が異なる。
-    ロックファイルが残っていても、OSロックが解放されていれば再取得できる。
+    異常終了で残る所有者情報は自動破棄せず、force=Trueで明示的に引き継ぐ。
     """
     resolved_directory = directory.resolve()
 
-    # データを置換しても編集権が途切れないよう、専用のsidecarを固定して使う。
-    # 解放後もロックファイルは削除しない。待機中の別プロセスと対象を分裂させない。
-    with lock_file(resolved_directory / ".edit-session", timeout_seconds=timeout_seconds):
+    from DataManager.storage import EditConflictError, Storage
+
+    validate_lock_timeout(timeout_seconds)
+    storage = Storage.discover(resolved_directory)
+    deadline = time.monotonic() + timeout_seconds
+    with ExitStack() as stack:
+        while True:
+            try:
+                stack.enter_context(storage.edit(resolved_directory, force=force))
+                break
+            except EditConflictError:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(remaining, 0.1))
         yield resolved_directory
 
 
-def write_file_atomically(path: Path, content: bytes):
+def write_file_atomically(path: Path, content: bytes, *, commit_guard: CommitGuard | None = None):
     """ バイト列を一時ファイルへ保存し、保存先を原子的に置き換える。
 
     呼び出し元が必要なロックを保持すること。失敗時も一時ファイルを片付ける。
@@ -93,7 +120,9 @@ def write_file_atomically(path: Path, content: bytes):
             os.fsync(stream.fileno())
 
         # 内容を書き出して同期できた場合だけ切り替え、途中までの内容を保存先へ見せない。
-        os.replace(temporary_file_path, path)
+        # 書出しを終えてから、編集権の確認と置換を同じ排他区間で行う。
+        with commit_guard(path) if commit_guard is not None else nullcontext():
+            os.replace(temporary_file_path, path)
     finally:
         # 成功時は置換で元の一時パスが消え、失敗時だけ一時ファイルが残る。
         temporary_file_path.unlink(missing_ok=True)

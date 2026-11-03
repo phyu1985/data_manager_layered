@@ -4,7 +4,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from DataManager import ObjectFileService, ObjectRepository, RowsFileService, RowsRepository
+from DataManager import FileService, ObjectRepository, RowsRepository
 
 
 class User(BaseModel):
@@ -16,13 +16,13 @@ class Event(BaseModel):
 
 
 def rejected(event: Event):
-    object_service = ObjectFileService(
+    object_service = FileService(
         repository=ObjectRepository(model=User, base_directory=Path("data")), path="user.json",
     )
     object_service.save(event)
 
-    rows_service = RowsFileService(
+    rows_service = FileService(
         repository=RowsRepository(model=User, base_directory=Path("data")), path="users.jsonl",
     )
     rows_service.save([event])
-    rows_service.append([event])
+    rows_service.save_as("other.jsonl", [event])

@@ -1,0 +1,6 @@
+saved_at:"2026-11-03T10:20:30"
+version:2
+saved_path:"C:\\capture"
+threshold:10.0
+gain:1.5
+label:"sensor #1"

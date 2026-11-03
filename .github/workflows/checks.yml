@@ -22,3 +22,6 @@ jobs:
       - run: python -m examples.application_services
       - run: python -m examples.workflow outputs/ci-workflow --excel
       - run: python -m examples.excel_reports
+      - run: python -m examples.metadata
+      - run: python -m examples.extended_formats outputs/ci-extended --pandas
+      - run: python -m examples.shared_editing outputs/ci-shared

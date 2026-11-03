@@ -9,6 +9,8 @@ from typing import Any, Generic, TypeVar, cast
 
 from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.repositories import ObjectRepository
+from DataManager.repositories import RowsRepository
+from DataManager.documents import RowsDocument
 
 DocumentValue = TypeVar("DocumentValue")
 DictionaryValue = dict[str, Any]
@@ -60,6 +62,10 @@ class VersionConverter:
     def current_version(self) -> int:
         return self._current_version
 
+    @property
+    def version_field(self) -> str:
+        return self._version_field
+
     def _validate_version(self, version: object) -> int:
         """ 欠損以外の不正値や、未対応の未来版を拒否する。
         """
@@ -110,23 +116,35 @@ class VersionConverter:
         return converted_value
 
 
-class VersionedObjectService(Generic[DocumentValue]):
-    """ 辞書Repositoryと版変換をつなぎ、アプリ側の型付きデータを読み書きする。
+class VersionedObjectRepository(Generic[DocumentValue]):
+    """ 辞書Repositoryへ版変換を重ね、アプリ側の型付きデータを読み書きする。
 
-    decode_current / encode_currentにPresetsの組み立てと保持項目の方針を渡す。
-    最終モデルの検証はdecode_current、出力項目の選択はencode_currentと各castの責務。
-    読み込んだ文書を内部に記憶せず、並行する別データの保持値を混ぜない。
+    現在版とモデルの対応はdecode_current / encode_currentへ委譲する。
+    維持項目は文書と一緒に受け渡し、別データの値が混ざるのを防ぐ。
     """
 
     def __init__(
         self, *, repository: ObjectRepository[DictionaryValue], converter: VersionConverter,
         decode_current: Callable[[DictionaryValue], DocumentValue],
         encode_current: Callable[[DocumentValue], DictionaryValue],
+        target_version: int | None = None,
     ):
         self._repository = repository
         self._converter = converter
         self._decode_current = decode_current
         self._encode_current = encode_current
+        if target_version is not None and (type(target_version) is not int or not 0 <= target_version <= converter.current_version):
+            raise ConfigurationError("保存版は0以上現在版以下の整数です")
+        self._target_version = target_version
+
+    def for_version(self, target_version: int | None) -> "VersionedObjectRepository[DocumentValue]":
+        """ 通常保存先の設定を変更せず、指定版への出力用Repositoryを構成する。
+        """
+        return VersionedObjectRepository(
+            repository=self._repository, converter=self._converter,
+            decode_current=self._decode_current, encode_current=self._encode_current,
+            target_version=target_version,
+        )
 
     def load(self, path: str | Path) -> DocumentValue:
         """ 生の項目をモデル検証で除外する前に、版変換を適用する。
@@ -142,6 +160,10 @@ class VersionedObjectService(Generic[DocumentValue]):
     ):
         """ 通常は現在版で保存し、指定があれば旧版へ変換して別途出力する。
         """
+        output_version = target_version if target_version is not None else self._target_version
+        if output_version is None:
+            output_version = self._converter.current_version
+
         current_value = self._encode_current(value)
         # encode_currentの版漏れ・誤指定で、現在の値へ再度upcastをかけない。
         if self._converter.read_version(current_value) != self._converter.current_version:
@@ -149,8 +171,89 @@ class VersionedObjectService(Generic[DocumentValue]):
 
         output_value = self._converter.convert(
             current_value,
-            target_version=self._converter.current_version if target_version is None else target_version,
+            target_version=output_version,
         )
 
         # 変換済みの項目が保存内容の正本。YAMLの既存キーをマージして廃止項目を戻さない。
         self._repository.save(path, output_value, overwrite=overwrite, merge_existing=False)
+
+
+class VersionedRowsRepository(Generic[DocumentValue]):
+    """ メタと本文を辞書のまま隣接版変換し、最後に現在のモデルを構築する。
+
+    キャスト対象はversion・metadata・rowsを持つ文書。版ごとのモデルを要求しない。
+    CSVの文字列版番号など、読取形式固有の解釈はread_versionで注入する。
+    """
+
+    def __init__(
+        self, *, repository: RowsRepository[DictionaryValue], converter: VersionConverter,
+        decode_current: Callable[[DictionaryValue], DocumentValue],
+        encode_current: Callable[[DocumentValue], DictionaryValue],
+        target_version: int | None = None,
+        read_version: Callable[[DictionaryValue], int] | None = None,
+    ):
+        if converter.version_field in {"metadata", "rows"}:
+            raise ConfigurationError("版項目はmetadata / rows以外にしてください")
+        self._repository = repository
+        self._converter = converter
+        self._decode_current = decode_current
+        self._encode_current = encode_current
+        if target_version is not None and (type(target_version) is not int or not 0 <= target_version <= converter.current_version):
+            raise ConfigurationError("保存版は0以上現在版以下の整数です")
+        self._target_version = target_version
+        self._read_version = read_version or converter.read_version
+
+    def for_version(self, target_version: int | None) -> "VersionedRowsRepository[DocumentValue]":
+        """ メタ付き一覧も、保存版を構成して共通のFileServiceへ渡せるようにする。
+        """
+        return VersionedRowsRepository(
+            repository=self._repository, converter=self._converter,
+            decode_current=self._decode_current, encode_current=self._encode_current,
+            read_version=self._read_version, target_version=target_version,
+        )
+
+    def _document(self, value: DictionaryValue) -> RowsDocument[DictionaryValue, DictionaryValue]:
+        """ 変換後の文書構造を検証し、保存版をメタへ明示して戻す。
+        """
+        metadata = dict(_require_dict(value.get("metadata")))
+        raw_rows = value.get("rows")
+        if not isinstance(raw_rows, list):
+            raise SerializationError("rowsは辞書のリストが必要です")
+        rows = [_require_dict(row) for row in cast(list[object], raw_rows)]
+        metadata[self._converter.version_field] = self._converter.read_version(value)
+        return RowsDocument(metadata=metadata, rows=rows)
+
+    def load(self, path: str | Path) -> DocumentValue:
+        """ 旧キーがモデル検証で消える前に、メタと行をまとめてupcastする。
+        """
+        document = self._repository.load_document(path)
+        payload = {
+            self._converter.version_field: self._read_version(document.metadata),
+            "metadata": document.metadata, "rows": document.rows,
+        }
+        current = self._converter.to_current(payload)
+        normalized = self._document(current)
+        return self._decode_current({**current, "metadata": normalized.metadata, "rows": normalized.rows})
+
+    def save(
+        self, path: str | Path, value: DocumentValue, *, target_version: int | None = None,
+        overwrite: bool = False,
+    ):
+        """ 現在の保存辞書へ戻し、指定時だけdowncastして文書全体を出力する。
+        """
+        output_version = target_version if target_version is not None else self._target_version
+        if output_version is None:
+            output_version = self._converter.current_version
+
+        current = self._encode_current(value)
+        if self._converter.read_version(current) != self._converter.current_version:
+            raise SerializationError("encode_currentは現在版の版番号を含めてください")
+        converted = self._converter.convert(
+            current, target_version=output_version,
+        )
+        self._repository.save_document(path, self._document(converted), overwrite=overwrite)
+
+
+# 旧名は移行用の別名。パスを受け取る部品はRepositoryとして扱う。
+VersionedObjectService = VersionedObjectRepository
+VersionedRowsService = VersionedRowsRepository

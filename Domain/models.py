@@ -1,10 +1,10 @@
-""" 加工・解析が必要とする値を明示する。ファイル操作や編集ロックは持たない。
+""" 保存用の設定と、加工・解析に必要な入力値。
 """
 from pydantic import BaseModel, ConfigDict
 
 
 class Settings(BaseModel):
-    """ 現在の設定ファイルで使う値。版ごとのクラスは定義しない。
+    """ 現在版の設定値。旧版との差分は版変換で吸収する。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -30,7 +30,7 @@ class ProcessingPresets(BaseModel):
 
 
 class AnalysisPresets(BaseModel):
-    """ 解析・編集が参照する値を明示する。Settingsの全体は渡さない。
+    """ 解析・編集に必要な値を、保存ファイルの構造から独立させる。
     """
 
     threshold: float

@@ -1,37 +1,42 @@
-""" 保存先や画面を知らずに、解析用Presetsを計算する。
+""" 確認優先順位と集計を計算する。入力の変更は呼出元で明示する。
 """
 from math import isfinite
 from statistics import fmean
+
+from pydantic import TypeAdapter
+
 from Domain.models import AnalysisPresets
-from Domain.results import ReviewSummary
+from Domain.results import AnalysisResult, ReviewSummary
+
+_threshold_adapter = TypeAdapter(float)
+_measurements_adapter = TypeAdapter(tuple[tuple[str, float], ...])
 
 
-def analyze_readings(presets: AnalysisPresets) -> ReviewSummary:
-    """ しきい値付近の確認優先順位を決め、集計を返す。ファイル操作はしない。
+def analyze_readings(presets: AnalysisPresets) -> AnalysisResult:
+    """ しきい値に近い測定から確認する順序と集計を返す。入力は変更しない。
     """
-    checked = AnalysisPresets.model_validate(presets.model_dump(mode="python"))
-    if not checked.measurements:
+    # 編集中の代入値も検証する。計算に不要な項目やモデル全体は複製しない。
+    threshold = _threshold_adapter.validate_python(presets.threshold, strict=True)
+    source = _measurements_adapter.validate_python(
+        tuple((row.measurement_id, row.value) for row in presets.measurements), strict=True,
+    )
+    if not source:
         raise ValueError("解析には一つ以上の測定値が必要です")
-    if not isfinite(checked.threshold):
+    if not isfinite(threshold):
         raise ValueError("しきい値は有限値が必要です")
-    if any(not isfinite(row.value) for row in checked.measurements):
+    if any(not isfinite(value) for _, value in source):
         raise ValueError("測定値は有限値が必要です")
 
-    rows = sorted(
-        checked.measurements,
-        key=lambda row: (abs(row.value - checked.threshold), row.measurement_id),
-    )
+    # IDの一意性は前提にしない。位置で指定すれば同じIDの行も失われない。
+    indices = tuple(sorted(
+        range(len(source)),
+        key=lambda i: (abs(source[i][1] - threshold), source[i][0]),
+    ))
     summary = ReviewSummary(
-        threshold=checked.threshold,
-        mean_value=fmean(row.value for row in rows),
-        max_value=max(row.value for row in rows),
-        exceeded_count=sum(row.value > checked.threshold for row in rows),
-        order=tuple(row.measurement_id for row in rows),
+        threshold=threshold,
+        mean_value=fmean(source[i][1] for i in indices),
+        max_value=max(value for _, value in source),
+        exceeded_count=sum(value > threshold for _, value in source),
+        order=tuple(source[i][0] for i in indices),
     )
-
-    # 並び順を解析結果として保存する。値そのものは再補正しないので、再解析で累積しない。
-    # 編集中のPresets自身へ反映し、編集権を持たない別モデルへ置き換えない。
-    presets.threshold = checked.threshold
-    presets.gain = checked.gain
-    presets.measurements = rows
-    return summary
+    return AnalysisResult(summary, indices, source)

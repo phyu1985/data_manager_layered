@@ -5,7 +5,7 @@ from typing import Any, assert_type
 
 from pydantic import BaseModel
 
-from DataManager import ObjectRepository, VersionConverter, VersionedObjectService
+from DataManager import FileService, ObjectRepository, VersionConverter, VersionedObjectRepository
 
 
 class Settings(BaseModel):
@@ -21,10 +21,13 @@ def encode_current(value: Settings) -> dict[str, Any]:
 
 
 def verify_types(directory: Path):
-    service = VersionedObjectService(
+    repository = VersionedObjectRepository(
         repository=ObjectRepository(model=dict, base_directory=directory),
         converter=VersionConverter(current_version=1, upcasts={}, downcasts={}),
         decode_current=decode_current, encode_current=encode_current,
     )
-    assert_type(service.load("settings.yaml"), Settings)
-    service.save("new.yaml", Settings(threshold=1))
+    file = FileService(repository=repository, path="settings.yaml")
+    assert_type(file.load(), Settings)
+    file.save_as("new.yaml", Settings(threshold=1))
+    legacy = FileService(repository=repository.for_version(0), path="legacy.yaml")
+    assert_type(legacy.load(), Settings)

@@ -1,0 +1,13 @@
+number,2
+channel_count,3
+device,A001
+[data]
+time,value
+0,1.2
+1,1.5
+[header2]
+number,2
+unit,V
+[channels]
+1,2,3
+4,5,6

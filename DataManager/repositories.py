@@ -6,26 +6,26 @@ ModelBindingが辞書とモデルを相互変換する。業務フィールド�
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import nullcontext
 import os
 from pathlib import Path
-from typing import Generic, Protocol
+from typing import Any, Generic, Protocol, overload, runtime_checkable
 
+from pydantic import ValidationError
+
+from DataManager.documents import MetadataValue, RowsDocument
 from DataManager.errors import ConfigurationError, SerializationError
-from DataManager.file_io import lock_file, read_last_nonblank_line, resolve_file_path, validate_lock_timeout, write_file_atomically
+from DataManager.file_io import CommitGuard, lock_file, read_last_nonblank_line, resolve_file_path, validate_lock_timeout, write_file_atomically
 from DataManager.model_conversion import ModelBinding, ModelValue
 from DataManager.serializers.csv import CsvSerializer
-from DataManager.serializers.custom_text import CustomTextSerializer
+from DataManager.serializers.kv import KvSerializer
 from DataManager.serializers.json import JsonSerializer
 from DataManager.serializers.jsonl import JsonlSerializer
 from DataManager.serializers.yaml import YamlSerializer
 
 
 class ObjectSerializer(Protocol):
-    """ 単一値のRepositoryがSerializerへ要求する最小限の契約。
-
-    Repositoryが文字コードを使ってファイルを読み書きし、
-    dumps / loadsへ文字列変換とモデル復元を委譲する。
-    専用設定は各実装が保持し、Repositoryは設定の内容を解釈しない。
+    """ 単一値と文字列の変換契約。専用設定はSerializer自身が保持する。
     """
 
     @property
@@ -75,13 +75,27 @@ class RowsSerializer(Protocol):
         ...
 
 
-class ObjectRepository(Generic[ModelValue]):
-    """ 生成時に指定した型で、単一モデルまたはdictを保存・復元する入口。
+@runtime_checkable
+class RowsDocumentSerializer(Protocol):
+    """ メタ付き一覧を扱うSerializerの追加契約。ファイル操作はRepositoryが担当する。
+    """
 
-    パスと拡張子からSerializerを選び、読み込みでは文字列からモデルを復元し、
-    保存では文字列への変換を終えてからファイルを置換する。
-    排他とファイル操作を担当し、形式の解析とモデルの検証は委譲する。
-    組み込み形式はJSON・YAML・独自テキストv1。
+    def dumps_document(
+        self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue], *,
+        metadata: dict[str, Any],
+    ) -> str:
+        ...
+
+    def loads_document(
+        self, serialized_text: str, model_binding: ModelBinding[ModelValue],
+    ) -> RowsDocument[dict[str, Any], ModelValue]:
+        ...
+
+
+class ObjectRepository(Generic[ModelValue]):
+    """ パスと拡張子でSerializerを選び、指定型の単一値を読み書きする。
+
+    排他とアトミック保存を担当し、形式の解釈・モデル検証はSerializerへ委譲する。
     """
 
     def __init__(
@@ -92,6 +106,7 @@ class ObjectRepository(Generic[ModelValue]):
         serializers_by_extension: Mapping[str, ObjectSerializer] | None = None,
         template_directory: Path | None = None,
         lock_timeout_seconds: float = 10,
+        commit_guard: CommitGuard | None = None,
     ):
         """ 使用可能なモデル、保存先の基準、形式別Serializerを固定する。
         """
@@ -102,6 +117,7 @@ class ObjectRepository(Generic[ModelValue]):
             raise ConfigurationError("ObjectRepositoryは単一モデルまたはdictを指定してください")
         self._base_directory = base_directory.resolve()
         self._lock_timeout_seconds = lock_timeout_seconds
+        self._commit_guard = commit_guard
         self._template_directory = template_directory.resolve() if template_directory is not None else None
 
         # 呼び出し元の対応表が変更されても、登録済みの形式が変わらないようコピーする。
@@ -112,7 +128,7 @@ class ObjectRepository(Generic[ModelValue]):
                 ".json": JsonSerializer(),
                 ".yaml": YamlSerializer(),
                 ".yml": YamlSerializer(),
-                ".txt": CustomTextSerializer(),
+                ".txt": KvSerializer(),
             }
         )
 
@@ -189,16 +205,14 @@ class ObjectRepository(Generic[ModelValue]):
                 value, self._model_binding,
                 existing_text=existing_text, template_text=template_text,
             ).encode(serializer.encoding)
-            write_file_atomically(target_path, serialized_content)
+            write_file_atomically(target_path, serialized_content, commit_guard=self._commit_guard)
 
 
 class RowsRepository(Generic[ModelValue]):
-    """ 型を固定した一覧を、全件保存・読み込み・JSONL追記する入口。
+    """ 指定型の一覧を読み書きし、行の解釈はSerializerへ委譲する。
 
-    load / saveはファイル全体を扱い、append_jsonlは既存内容を残して追加する。
-    混在するモデルの判別はSerializerへ委譲し、Repositoryは行の項目を解釈しない。
-    全件保存は一時ファイルの置換、既存への追記は排他中の直接書き込みを使うため、
-    障害時の保証は同じではない。組み込み形式はCSV・JSONL。
+    全件保存はアトミック置換、JSONL追記は排他中の直接書込み。
+    追記の途中停止では末尾が不完全になる場合がある。
     """
 
     def __init__(
@@ -208,6 +222,7 @@ class RowsRepository(Generic[ModelValue]):
         base_directory: Path,
         serializers_by_extension: Mapping[str, RowsSerializer] | None = None,
         lock_timeout_seconds: float = 10,
+        commit_guard: CommitGuard | None = None,
     ):
         """ 使用可能なモデル、保存先の基準、形式別Serializerを固定する。
         """
@@ -216,6 +231,7 @@ class RowsRepository(Generic[ModelValue]):
         self._model_binding = ModelBinding(model)
         self._base_directory = base_directory.resolve()
         self._lock_timeout_seconds = lock_timeout_seconds
+        self._commit_guard = commit_guard
 
         # 呼び出し元の対応表が変更されても、登録済みの形式が変わらないようコピーする。
         self._serializers_by_extension: dict[str, RowsSerializer] = (
@@ -267,7 +283,64 @@ class RowsRepository(Generic[ModelValue]):
             if target_path.exists() and not overwrite:
                 raise FileExistsError(f"上書きは明示的な許可が必要です: {target_path}")
 
-            write_file_atomically(target_path, serialized_content)
+            write_file_atomically(target_path, serialized_content, commit_guard=self._commit_guard)
+
+    @overload
+    def load_document(
+        self, path: str | Path, *, metadata_model: type[MetadataValue],
+    ) -> RowsDocument[MetadataValue, ModelValue]:
+        ...
+
+    @overload
+    def load_document(self, path: str | Path) -> RowsDocument[dict[str, Any], ModelValue]:
+        ...
+
+    def load_document(
+        self, path: str | Path, *, metadata_model: type[MetadataValue] | None = None,
+    ) -> RowsDocument[MetadataValue, ModelValue] | RowsDocument[dict[str, Any], ModelValue]:
+        """ メタと本文を同じ読込結果から返す。指定時だけメタもモデルとして検証する。
+        """
+        target_path, serializer = self._resolve_path_and_serializer(path)
+        if not isinstance(serializer, RowsDocumentSerializer):
+            raise ConfigurationError("このSerializerはメタ付き文書の入出力に対応していません")
+
+        with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
+            serialized_text = target_path.read_bytes().decode(serializer.encoding)
+
+        # メタと本文を別々に読み直すと、途中の更新により異なる版の値が混ざってしまう。
+        document = serializer.loads_document(serialized_text, self._model_binding)
+        if metadata_model is None:
+            return document
+
+        try:
+            metadata = ModelBinding(metadata_model).restore_value(document.metadata)
+        except ValidationError as error:
+            raise SerializationError(f"メタ情報のモデル検証に失敗しました: {error}") from error
+
+        return RowsDocument(metadata=metadata, rows=document.rows)
+
+    def save_document(
+        self, path: str | Path, document: RowsDocument[MetadataValue, ModelValue], *,
+        overwrite: bool = False, metadata_by_alias: bool = False,
+    ):
+        """ メタと本文を一体で保存する。変換失敗時には既存ファイルへ触れない。
+        """
+        target_path, serializer = self._resolve_path_and_serializer(path)
+        if not isinstance(serializer, RowsDocumentSerializer):
+            raise ConfigurationError("このSerializerはメタ付き文書の入出力に対応していません")
+
+        # 本文と同じ変換担当へ委譲し、Repositoryにdictとモデルの分岐を増やさない。
+        metadata = ModelBinding(type(document.metadata)).to_dict(
+            document.metadata, by_alias=metadata_by_alias,
+        )
+        serialized_content = serializer.dumps_document(
+            document.rows, self._model_binding, metadata=metadata,
+        ).encode(serializer.encoding)
+
+        with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
+            if target_path.exists() and not overwrite:
+                raise FileExistsError(f"上書きは明示的な許可が必要です: {target_path}")
+            write_file_atomically(target_path, serialized_content, commit_guard=self._commit_guard)
 
     def append_jsonl(self, path: str | Path, rows: Iterable[ModelValue]):
         """ 既存のJSONLへ、指定型の行を末尾追加する。
@@ -300,6 +373,7 @@ class RowsRepository(Generic[ModelValue]):
                 write_file_atomically(
                     target_path,
                     serialized_metadata_line + serialized_data_lines,
+                    commit_guard=self._commit_guard,
                 )
                 return
 
@@ -309,11 +383,18 @@ class RowsRepository(Generic[ModelValue]):
             )
 
             # 完全な最終行でも改行がない場合がある。次のJSONと連結しないよう補う。
-            with target_path.open("ab") as stream:
-                separator_newline = b"\n" if needs_separator_newline else b""
-                stream.write(separator_newline + serialized_data_lines)
-                stream.flush()
-                os.fsync(stream.fileno())
+            with self._commit_guard(target_path) if self._commit_guard is not None else nullcontext():
+                self._append_bytes(target_path, serialized_data_lines, needs_separator_newline)
+
+    @staticmethod
+    def _append_bytes(target_path: Path, serialized_data_lines: bytes, needs_separator_newline: bool):
+        """ 所有権を確保した区間内でのみ追記する。I/O中の強制割込はしない。
+        """
+        with target_path.open("ab") as stream:
+            separator_newline = b"\n" if needs_separator_newline else b""
+            stream.write(separator_newline + serialized_data_lines)
+            stream.flush()
+            os.fsync(stream.fileno())
 
     def _validate_existing_jsonl_file(
         self,
@@ -358,3 +439,31 @@ class RowsRepository(Generic[ModelValue]):
             stream.seek(-1, os.SEEK_END)
 
             return stream.read(1) != b"\n"
+
+
+class RowsDocumentRepository(Generic[MetadataValue, ModelValue]):
+    """ メタの復元型を構成時に固定し、通常のload/save契約へ合わせるアダプター。
+
+    メタ付きファイルを扱うFileServiceも、利用側でload_documentへ切り替える必要がない。
+    実際の文法、ファイル排他、モデルの検証は元のRepositoryへ委譲する。
+    """
+
+    def __init__(
+        self, *, repository: RowsRepository[ModelValue], metadata_model: type[MetadataValue],
+        metadata_by_alias: bool = False,
+    ):
+        self._repository = repository
+        self._metadata_binding = ModelBinding(metadata_model)
+        self._metadata_by_alias = metadata_by_alias
+
+    def load(self, path: str | Path) -> RowsDocument[MetadataValue, ModelValue]:
+        return self._repository.load_document(path, metadata_model=self._metadata_binding.model_classes[0])
+
+    def save(
+        self, path: str | Path, value: RowsDocument[MetadataValue, ModelValue], *, overwrite: bool = False,
+    ):
+        # 構成した型以外のメタを、実行時にも受け付けない。モデルの辞書化も一度で済ませる。
+        metadata = self._metadata_binding.to_dict(value.metadata, by_alias=self._metadata_by_alias)
+        self._repository.save_document(path, RowsDocument(metadata=metadata, rows=value.rows), overwrite=overwrite)
+
+

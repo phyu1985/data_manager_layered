@@ -9,7 +9,8 @@
     "typecheck/analysis_positive.py",
     "examples",
     "tools",
-    "main.py"
+    "main.py",
+    "typecheck/documents_positive.py"
   ],
   "pythonVersion": "3.12",
   "typeCheckingMode": "basic",
@@ -34,6 +35,10 @@
     "DataManager/__init__.py",
     "typecheck/positive.py",
     "typecheck/versioning_positive.py",
-    "typecheck/analysis_positive.py"
+    "typecheck/analysis_positive.py",
+    "DataManager/documents.py",
+    "typecheck/documents_positive.py",
+    "DataManager/storage.py",
+    "DataManager/frames.py"
   ]
 }

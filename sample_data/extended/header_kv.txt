@@ -1,0 +1,7 @@
+; Synthetic input, not a company file specification
+; 2026-11-03T10:20:30
+; 2
+; "C:\\capture"
+threshold : 10    # condition
+gain : 1.5       ; multiplier
+label : "sensor #1"

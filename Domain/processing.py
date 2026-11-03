@@ -1,18 +1,30 @@
 """ Presetsから加工値を作る。保存や表示は呼出元が担当する。
 """
+from collections.abc import Sequence
 from math import isfinite
 from Domain.models import AnalysisPresets, Measurement, ProcessingPresets
 
 
-def process_data(presets: ProcessingPresets) -> AnalysisPresets:
-    """ 架空の加工例。必要な値だけを受け取り、ファイルや編集権を扱わない。
+def _build_analysis_presets(
+    values: Sequence[float], *, threshold: float, gain: float,
+) -> AnalysisPresets:
+    """ 入力順のIDを付け、解析へ渡す測定一覧を作る。
     """
-    measurements = [
-        Measurement(measurement_id=str(i), value=value)
-        for i, value in enumerate(presets.raw_values)
-    ]
     return AnalysisPresets(
-        threshold=presets.threshold, gain=presets.gain, measurements=measurements,
+        threshold=threshold,
+        gain=gain,
+        measurements=[
+            Measurement(measurement_id=str(i), value=value)
+            for i, value in enumerate(values)
+        ],
+    )
+
+
+def process_data(presets: ProcessingPresets) -> AnalysisPresets:
+    """ 値を補正せず、測定IDを付けて解析用モデルへ移す。
+    """
+    return _build_analysis_presets(
+        presets.raw_values, threshold=presets.threshold, gain=presets.gain,
     )
 
 
@@ -32,9 +44,5 @@ def process_readings(presets: ProcessingPresets) -> AnalysisPresets:
     if any(not isfinite(value) for value in values):
         raise ValueError("補正結果を有限値として保持できません")
 
-    # 既存の加工例でIDと行モデルを作り、このシナリオの補正値を反映する。
-    # 元のPresetsや生データは変更しない。
-    result = process_data(checked)
-    for measurement, value in zip(result.measurements, values, strict=True):
-        measurement.value = value
-    return result
+    # 補正済みの値から新しいモデルを作り、入力と出力を共有しない。
+    return _build_analysis_presets(values, threshold=checked.threshold, gain=checked.gain)

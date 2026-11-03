@@ -1,3 +1,5 @@
 -r requirements-excel.txt
 pytest>=8,<10
 pyright>=1.1.400,<2
+-r requirements-pandas.txt
+pandas-stubs>=2.2,<4

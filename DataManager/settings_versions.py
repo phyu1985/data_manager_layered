@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from DataManager import ObjectRepository, VersionConverter, VersionedObjectService
+from DataManager.file_io import CommitGuard
+from DataManager import ObjectRepository, VersionConverter, VersionedObjectRepository
 from Domain.models import Settings
 
 
@@ -91,11 +92,11 @@ def encode_settings(document: SettingsDocument) -> dict[str, Any]:
     }
 
 
-def create_settings_service(directory: Path) -> VersionedObjectService[SettingsDocument]:
+def create_settings_repository(directory: Path, *, commit_guard: CommitGuard | None = None) -> VersionedObjectRepository[SettingsDocument]:
     """ ファイル形式の設定と業務の互換規則を、この組立箇所だけで接続する。
     """
-    return VersionedObjectService(
-        repository=ObjectRepository(model=dict, base_directory=directory),
+    return VersionedObjectRepository(
+        repository=ObjectRepository(model=dict, base_directory=directory, commit_guard=commit_guard),
         converter=VersionConverter(
             current_version=3,
             upcasts={0: upcast_v0_to_v1, 1: upcast_v1_to_v2, 2: upcast_v2_to_v3},
@@ -104,3 +105,7 @@ def create_settings_service(directory: Path) -> VersionedObjectService[SettingsD
         decode_current=decode_settings,
         encode_current=encode_settings,
     )
+
+
+# 旧ファクトリー名の移行用別名。
+create_settings_service = create_settings_repository

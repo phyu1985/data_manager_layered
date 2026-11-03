@@ -16,3 +16,6 @@ coverage.xml
 htmlcov/
 .DS_Store
 Thumbs.db
+
+.data_manager_locks/
+application_control/

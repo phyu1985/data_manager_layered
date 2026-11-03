@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "device": "A001",
+  "rows": [
+    {
+      "time": 0,
+      "value": 1.2
+    },
+    {
+      "time": 1,
+      "value": 1.5
+    }
+  ]
+}
