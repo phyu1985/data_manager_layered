@@ -11,7 +11,7 @@ from DataManager import (
     BlockRowsOptions, BlockRowsSerializer, CsvOptions, CsvSerializer, KvOptions, KvSerializer,
     FileReader, FileService, ObjectRepository, RowsDocument, RowsRepository, Storage, VersionConverter, VersionedRowsRepository,
 )
-from DataManager.serializers.sample_capture import CaptureCsvFileSerializer, CaptureSectionSerializer, PositionalCaptureReader
+from DataManager.serializers.sample_capture import CaptureCsvFileSerializer, CaptureSectionSerializer, PositionalCaptureSerializer
 
 SAMPLES = Path(__file__).resolve().parents[1] / "sample_data" / "extended"
 
@@ -35,6 +35,28 @@ class Measurement(BaseModel):
     time: int
     value: float
 
+
+class Attribute(BaseModel):
+    """ ブロック内の属性一件。
+    """
+
+    name: str
+    value: float
+    start: int
+    length: int
+
+
+class BlockModel(BaseModel):
+    """ 本体と属性一覧を持つ、拡張ブロックの復元先。
+    """
+
+    name: str
+    ch: int
+    start: int
+    length: int
+    attrs: list[Attribute]
+    axis_mm: float
+    length_mm: float
 
 class Record(BaseModel):
     """ 複数行で一レコードとなる入力を、平坦なモデルで扱う。
@@ -133,7 +155,7 @@ def run(output: Path, *, include_pandas: bool = False):
                                      "second": {"metadata": second.metadata, "rows": second.rows}})
 
     positional = ObjectRepository[dict[str, Any]](model=dict, base_directory=SAMPLES,
-        serializers_by_extension={".txt": PositionalCaptureReader()}).load("positional.txt")
+        serializers_by_extension={".txt": PositionalCaptureSerializer()}).load("positional.txt")
     # 位置依存の旧入力の単位変更も、Parserではなくアプリのキャストで明示する。
     positional = VersionConverter(current_version=1, upcasts={0: upcast_capture}, downcasts={}).to_current(positional)
     positional["rows"] = [Measurement.model_validate(row).model_dump() for row in positional["rows"]]

@@ -76,6 +76,15 @@ def test_yaml_shared_aliases_still_work_and_scalars_are_plain_types():
     assert type(values["text"]) is str and type(values["mapping"]) is dict
     assert values["shared"] == {"count": 1}
 
+    # 同じアンカーでも、保存時に別々の項目へ更新できる。
+    serializer = YamlSerializer()
+    expected = {"first": {"x": 1}, "second": {"y": 2}}
+    text = serializer.dumps_exact(
+        expected, ModelBinding(dict),
+        template_text="first: &shared {x: 0, y: 0}\nsecond: *shared\n",
+    )
+    assert serializer.loads(text, ModelBinding(dict)) == expected
+
 
 def test_yaml_rejects_cyclic_existing_document_without_overwriting(tmp_path):
     target = tmp_path / "data.yaml"

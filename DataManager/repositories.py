@@ -46,6 +46,18 @@ class ObjectSerializer(Protocol):
         ...
 
 
+@runtime_checkable
+class ExactObjectSerializer(Protocol):
+    """ 保存項目を増やさず、既存文書・テンプレートの書式を再利用する追加契約。
+    """
+
+    def dumps_exact(
+        self, value: ModelValue, model_binding: ModelBinding[ModelValue], *,
+        existing_text: str | None = None, template_text: str | None = None,
+    ) -> str:
+        ...
+
+
 class RowsSerializer(Protocol):
     """ 一覧の全件保存・読み込みを形式に依存せず呼び出すための契約。
 
@@ -60,18 +72,10 @@ class RowsSerializer(Protocol):
     def validate_model_configuration(self, model_binding: ModelBinding[ModelValue]):
         ...
 
-    def dumps(
-        self,
-        rows: Sequence[ModelValue],
-        model_binding: ModelBinding[ModelValue],
-    ) -> str:
+    def dumps(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
         ...
 
-    def loads(
-        self,
-        serialized_text: str,
-        model_binding: ModelBinding[ModelValue],
-    ) -> list[ModelValue]:
+    def loads(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> list[ModelValue]:
         ...
 
 
@@ -99,14 +103,10 @@ class ObjectRepository(Generic[ModelValue]):
     """
 
     def __init__(
-        self,
-        *,
-        model: type[ModelValue],
-        base_directory: Path,
+        self, *, model: type[ModelValue], base_directory: Path,
         serializers_by_extension: Mapping[str, ObjectSerializer] | None = None,
-        template_directory: Path | None = None,
-        lock_timeout_seconds: float = 10,
-        commit_guard: CommitGuard | None = None,
+        template_directory: Path | None = None, template_name: str | Path | None = None,
+        lock_timeout_seconds: float = 10, commit_guard: CommitGuard | None = None,
     ):
         """ 使用可能なモデル、保存先の基準、形式別Serializerを固定する。
         """
@@ -115,10 +115,15 @@ class ObjectRepository(Generic[ModelValue]):
         self._model_binding = ModelBinding(model)
         if self._model_binding.data_mode == "mixed":
             raise ConfigurationError("ObjectRepositoryは単一モデルまたはdictを指定してください")
+
+        # 保存場所・排他・テンプレートを固定し、操作中に設定が変わらないようにする。
         self._base_directory = base_directory.resolve()
         self._lock_timeout_seconds = lock_timeout_seconds
         self._commit_guard = commit_guard
         self._template_directory = template_directory.resolve() if template_directory is not None else None
+        self._template_name = template_name
+        if template_name is not None and template_directory is None:
+            raise ConfigurationError("template_nameにはtemplate_directoryが必要です")
 
         # 呼び出し元の対応表が変更されても、登録済みの形式が変わらないようコピーする。
         self._serializers_by_extension: dict[str, ObjectSerializer] = (
@@ -154,9 +159,7 @@ class ObjectRepository(Generic[ModelValue]):
         # 読み取った内容は固定されているため、時間のかかる解析・検証はロック解放後に行う。
         return serializer.loads(serialized_text, self._model_binding)
 
-    def _read_template_text(
-        self, template_name: str | Path, target_path: Path, encoding: str,
-    ) -> str:
+    def _read_template_text(self, template_name: str | Path, target_path: Path, encoding: str) -> str:
         """ 固定ディレクトリ内のテンプレートを、一貫したスナップショットとして読む。
         """
         if self._template_directory is None:
@@ -176,20 +179,31 @@ class ObjectRepository(Generic[ModelValue]):
 
     def save(
         self, path: str | Path, value: ModelValue, *, template_name: str | Path | None = None,
-        overwrite: bool = False, merge_existing: bool = True,
+        overwrite: bool = False, merge_existing: bool = True, preserve_existing_comments: bool = False,
     ):
         """ 単一値を保存する。既存ファイルの更新にはoverwrite=Trueが必要。
 
-        merge_existing=Falseは既存YAMLの合成を止める。廃止キーを戻したくない
-        版変換後の保存に使うが、既存文書のコメント保持も行わなくなる。
+        merge_existing=Falseは保存項目をvalueに限定する。
+        preserve_existing_comments=Trueなら、存続キーの既存コメントも引き継ぐ。
         """
+        # 先に雛形を読み終え、保存先とは別のスナップショットとして扱う。
         target_path, serializer = self._resolve_path_and_serializer(path)
         template_text = None
 
-        if template_name is not None:
-            if not serializer.supports_document_merge:
+        selected_template = template_name if template_name is not None else self._template_name
+        if selected_template is not None:
+            if serializer.supports_document_merge:
+                template_text = self._read_template_text(selected_template, target_path, serializer.encoding)
+            elif template_name is not None:
                 raise ConfigurationError("この形式はテンプレート合成に対応しません")
-            template_text = self._read_template_text(template_name, target_path, serializer.encoding)
+            # 構成時の既定テンプレートは、合成対応形式だけに適用する。
+
+        if (
+            not merge_existing
+            and serializer.supports_document_merge
+            and not isinstance(serializer, ExactObjectSerializer)
+        ):
+            raise ConfigurationError("このSerializerは保存項目を限定した文書出力に対応しません")
 
         # YAMLの既存読取→マージ→保存を分割せず、他の保存結果を取りこぼさないようにする。
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
@@ -197,14 +211,27 @@ class ObjectRepository(Generic[ModelValue]):
             if target_path.exists() and not overwrite:
                 raise FileExistsError(f"上書きは明示的な許可が必要です: {target_path}")
 
+            # 保存先の既存内容は、上書き可否の確認から置換まで同じ排他内で扱う。
             existing_text = None
-            if merge_existing and serializer.supports_document_merge and target_path.exists():
+            if (
+                (merge_existing or preserve_existing_comments)
+                and serializer.supports_document_merge
+                and target_path.exists()
+            ):
                 existing_text = target_path.read_bytes().decode(serializer.encoding)
 
-            serialized_content = serializer.dumps(
-                value, self._model_binding,
-                existing_text=existing_text, template_text=template_text,
-            ).encode(serializer.encoding)
+            # 通常保存は値を合成し、版変換後は指定された項目だけで文書を作る。
+            if not merge_existing and isinstance(serializer, ExactObjectSerializer):
+                serialized_text = serializer.dumps_exact(
+                    value, self._model_binding, existing_text=existing_text, template_text=template_text,
+                )
+            else:
+                serialized_text = serializer.dumps(
+                    value, self._model_binding, existing_text=existing_text, template_text=template_text,
+                )
+
+            # 文書全体を作れた場合だけ切り替え、変換途中の内容を保存先へ見せない。
+            serialized_content = serialized_text.encode(serializer.encoding)
             write_file_atomically(target_path, serialized_content, commit_guard=self._commit_guard)
 
 
@@ -216,13 +243,9 @@ class RowsRepository(Generic[ModelValue]):
     """
 
     def __init__(
-        self,
-        *,
-        model: type[ModelValue] | tuple[type[ModelValue], ...],
-        base_directory: Path,
+        self, *, model: type[ModelValue] | tuple[type[ModelValue], ...], base_directory: Path,
         serializers_by_extension: Mapping[str, RowsSerializer] | None = None,
-        lock_timeout_seconds: float = 10,
-        commit_guard: CommitGuard | None = None,
+        lock_timeout_seconds: float = 10, commit_guard: CommitGuard | None = None,
     ):
         """ 使用可能なモデル、保存先の基準、形式別Serializerを固定する。
         """
@@ -275,9 +298,7 @@ class RowsRepository(Generic[ModelValue]):
         target_path, serializer = self._resolve_path_and_serializer(path)
 
         # 現在の形式は既存内容を参照しない。変換エラーでは保存先へ触れないよう先に済ませる。
-        serialized_content = serializer.dumps(rows, self._model_binding).encode(
-            serializer.encoding
-        )
+        serialized_content = serializer.dumps(rows, self._model_binding).encode(serializer.encoding)
 
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
             if target_path.exists() and not overwrite:
@@ -312,6 +333,7 @@ class RowsRepository(Generic[ModelValue]):
         if metadata_model is None:
             return document
 
+        # 本文の復元は完了している。指定がある場合だけmetaもモデルで検証する。
         try:
             metadata = ModelBinding(metadata_model).restore_value(document.metadata)
         except ValidationError as error:
@@ -330,9 +352,7 @@ class RowsRepository(Generic[ModelValue]):
             raise ConfigurationError("このSerializerはメタ付き文書の入出力に対応していません")
 
         # 本文と同じ変換担当へ委譲し、Repositoryにdictとモデルの分岐を増やさない。
-        metadata = ModelBinding(type(document.metadata)).to_dict(
-            document.metadata, by_alias=metadata_by_alias,
-        )
+        metadata = ModelBinding(type(document.metadata)).to_dict(document.metadata, by_alias=metadata_by_alias)
         serialized_content = serializer.dumps_document(
             document.rows, self._model_binding, metadata=metadata,
         ).encode(serializer.encoding)
@@ -358,29 +378,19 @@ class RowsRepository(Generic[ModelValue]):
             return
 
         # バッチ全体を変換し、型・値のエラーで途中まで追記しないようにする。
-        serialized_data_lines = serializer.serialize_data_lines(
-            rows_to_append,
-            self._model_binding,
-        ).encode(serializer.encoding)
-        serialized_metadata_line = serializer.serialize_metadata_line(
-            self._model_binding
-        ).encode(serializer.encoding)
+        serialized_data_lines = serializer.serialize_data_lines(rows_to_append, self._model_binding).encode(serializer.encoding)
+        serialized_metadata_line = serializer.serialize_metadata_line(self._model_binding).encode(serializer.encoding)
 
         # 存在判定から書き込みまで同じロックを保持し、同時作成による上書きを防ぐ。
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
             # 新規ファイルはメタと本文を一体で保存し、メタだけの作成途中を見せない。
             if not target_path.exists():
                 write_file_atomically(
-                    target_path,
-                    serialized_metadata_line + serialized_data_lines,
-                    commit_guard=self._commit_guard,
+                    target_path, serialized_metadata_line + serialized_data_lines, commit_guard=self._commit_guard,
                 )
                 return
 
-            needs_separator_newline = self._validate_existing_jsonl_file(
-                target_path,
-                serializer,
-            )
+            needs_separator_newline = self._validate_existing_jsonl_file(target_path, serializer)
 
             # 完全な最終行でも改行がない場合がある。次のJSONと連結しないよう補う。
             with self._commit_guard(target_path) if self._commit_guard is not None else nullcontext():
@@ -396,11 +406,7 @@ class RowsRepository(Generic[ModelValue]):
             stream.flush()
             os.fsync(stream.fileno())
 
-    def _validate_existing_jsonl_file(
-        self,
-        target_path: Path,
-        serializer: JsonlSerializer,
-    ) -> bool:
+    def _validate_existing_jsonl_file(self, target_path: Path, serializer: JsonlSerializer) -> bool:
         """ 既存JSONLへ追記できるか確認し、区切り改行の要否を返す。
 
         呼び出し元が保存先のロックを保持していることが前提。
@@ -418,10 +424,7 @@ class RowsRepository(Generic[ModelValue]):
             metadata_end_offset = stream.tell()
 
             # 別のモデル構成で作られたファイルへ追記しないよう、先頭の設定を照合する。
-            serializer.validate_metadata_line(
-                metadata_line.decode(serializer.encoding),
-                self._model_binding,
-            )
+            serializer.validate_metadata_line(metadata_line.decode(serializer.encoding), self._model_binding)
 
             # 全行の再読み込みを避け、最後の非空行だけを検証する。
             last_data_line, last_line_offset = read_last_nonblank_line(stream)
@@ -429,10 +432,7 @@ class RowsRepository(Generic[ModelValue]):
             # 開始位置がメタ行の範囲内なら本文はまだなく、モデルとして復元する必要がない。
             if last_line_offset >= metadata_end_offset:
                 try:
-                    serializer.deserialize_data_line(
-                        last_data_line.decode(serializer.encoding),
-                        self._model_binding,
-                    )
+                    serializer.deserialize_data_line(last_data_line.decode(serializer.encoding), self._model_binding)
                 except (ValueError, UnicodeError) as error:
                     raise SerializationError(f"JSONLの末尾行が不正です: {error}") from error
 
@@ -459,9 +459,7 @@ class RowsDocumentRepository(Generic[MetadataValue, ModelValue]):
     def load(self, path: str | Path) -> RowsDocument[MetadataValue, ModelValue]:
         return self._repository.load_document(path, metadata_model=self._metadata_binding.model_classes[0])
 
-    def save(
-        self, path: str | Path, value: RowsDocument[MetadataValue, ModelValue], *, overwrite: bool = False,
-    ):
+    def save(self, path: str | Path, value: RowsDocument[MetadataValue, ModelValue], *, overwrite: bool = False):
         # 構成した型以外のメタを、実行時にも受け付けない。モデルの辞書化も一度で済ませる。
         metadata = self._metadata_binding.to_dict(value.metadata, by_alias=self._metadata_by_alias)
         self._repository.save_document(path, RowsDocument(metadata=metadata, rows=value.rows), overwrite=overwrite)

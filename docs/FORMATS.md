@@ -38,9 +38,9 @@ repository.save("settings.yaml", settings, template_name="base.yaml")
 settings = repository.load("settings.yaml")
 ```
 
-値はテンプレート→既存文書→モデル値の順に重ねます。
+通常のObjectRepositoryでは、値はテンプレート→既存文書→モデル値の順に重ねます。
 マッピングは再帰マージし、配列と単一値は全体を置き換えます。
-モデルから出力されない既存キー・テンプレートのキーは残ります。
+通常保存では、モデルから出力されない既存キー・テンプレートのキーは残ります。
 モデルの既定値やNoneも出力されるため、既存値より優先されます。
 
 既存のコメントを優先し、既存にない箇所ではテンプレートのコメントを残します。
@@ -57,6 +57,8 @@ settings = repository.load("settings.yaml")
 
 設定を変える場合はYamlSerializer(dump_options=YamlDumpOptions(...))を登録します。
 ruamelの編集用状態は操作ごとに作り、Serializerの並行使用で共有しません。
+
+版変換付き保存では、変換後の出力項目だけを保存し、存続キーの書式を引き継ぎます。FileServiceでの構成と保存順は[テンプレートと版変換](TEMPLATES_AND_VERSIONS.md)を参照してください。
 
 ## CSV
 

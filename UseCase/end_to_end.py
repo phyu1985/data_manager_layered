@@ -106,6 +106,4 @@ def run(
     reports.save(rows)
     notify(f"帳票: {report_path.resolve()}")
 
-    return DemoResult(
-        analysis.directory, report_path.resolve(), first_result.summary, second_result.summary,
-    )
+    return DemoResult(analysis.directory, report_path.resolve(), first_result.summary, second_result.summary)

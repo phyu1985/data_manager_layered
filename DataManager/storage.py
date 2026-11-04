@@ -74,6 +74,8 @@ class Storage:
             self._storage_id: str = descriptor["storage_id"]
         except (OSError, ValueError, KeyError) as error:
             raise ConfigurationError(f"保存領域を開けません: {self._root}") from error
+
+        # 保存領域の識別を確認できた場合だけ、全端末共通の管理場所を使う。
         self._control = self._root / self._CONTROL_NAME
         if not (self._control / "guards").is_dir() or not (self._control / "editors").is_dir():
             raise ConfigurationError("管理フォルダがありません。保守担当者が保存領域を確認してください")
@@ -96,6 +98,8 @@ class Storage:
         control = root / cls._CONTROL_NAME
         if control.exists():
             raise ConfigurationError("識別情報なしで管理フォルダが存在します。自動復旧はしません")
+
+        # 識別情報を最後に作り、通常のdiscoverには初期化済みの領域だけを見せる。
         (control / "guards").mkdir(parents=True)
         (control / "editors").mkdir()
         # 実運用では全クライアント停止中に実行する。xモードで既存の定義を置換しない。
@@ -150,8 +154,10 @@ class Storage:
 
     @contextmanager
     def _guard(self, path: Path, kind: str, timeout: float = 10) -> Generator[None, None, None]:
-        with portalocker.Lock(str(self._guard_path(path, kind)), mode="a", timeout=timeout,
-                              flags=portalocker.LOCK_EX | portalocker.LOCK_NB):
+        with portalocker.Lock(
+            str(self._guard_path(path, kind)), mode="a", timeout=timeout,
+            flags=portalocker.LOCK_EX | portalocker.LOCK_NB,
+        ):
             yield
 
     @contextmanager
@@ -172,13 +178,17 @@ class Storage:
             return None
         except (OSError, ValueError) as error:
             raise ConfigurationError("編集者情報を読み取れません。ロックなしの継続はしません") from error
+
         if not isinstance(value, dict):
             raise ConfigurationError("編集者情報が壊れています")
         try:
             fields = cast(dict[str, Any], value)
             if set(fields) != set(EditorInfo.__dataclass_fields__):
                 raise ValueError("項目が一致しません")
-            if any(not isinstance(fields[key], str) for key in ("resource", "session_id", "user", "host", "started_at")) or type(fields["process_id"]) is not int:
+            if (
+                any(not isinstance(fields[key], str) for key in ("resource", "session_id", "user", "host", "started_at"))
+                or type(fields["process_id"]) is not int
+            ):
                 raise ValueError("項目の型が一致しません")
             owner = EditorInfo(**fields)
             if owner.resource != self._resource(directory) or not owner.session_id:
@@ -201,18 +211,23 @@ class Storage:
         directory = directory.resolve()
         owner = EditorInfo(self._resource(directory), uuid4().hex, getpass.getuser(),
                            socket.gethostname(), os.getpid(), datetime.now(timezone.utc).isoformat())
+
+        # 短時間の排他内で権利を取得・引き継ぎ、編集期間はセッションIDで識別する。
         with self._guard(directory, "editor"):
             self._check_configuration()
             previous = self._read_owner(directory)
             if previous is not None and not force:
                 raise EditConflictError(f"編集中です: {previous.user}@{previous.host} / {previous.started_at}")
             write_file_atomically(self._owner_path(directory), json.dumps(owner.__dict__).encode("utf-8"))
+
+        # 編集自体はOSロックを持ち続けず、節目と保存確定時に権利を検証する。
         guard_path = self._guard_path(directory, "editor")
         session = EditSession(directory, owner, validate=lambda: self._check_token(directory, owner.session_id),
                               guard_key=(self._storage_id, guard_path.name), guard_path=guard_path)
         try:
             yield session
         finally:
+            # 強制引継ぎ後は新所有者の情報を消さず、自分の権利だけを片付ける。
             with self._guard(directory, "editor"):
                 current = self._read_owner(directory)
                 if current is not None and current.session_id == owner.session_id:
@@ -263,6 +278,8 @@ class EditSession:
             with self._guard_sessions([self]):
                 yield
             return
+
+        # 別フォルダへの出力は、元の編集権と出力先の編集権を両方確保する。
         other_storage = Storage.discover(target.parent)
         with other_storage.edit(target.parent) as destination:
             with self._guard_sessions([self, destination]):
@@ -279,6 +296,7 @@ class EditSession:
             for key in sorted(guards):
                 stack.enter_context(portalocker.Lock(str(guards[key]), mode="a", timeout=10,
                                                     flags=portalocker.LOCK_EX | portalocker.LOCK_NB))
+            # 全ガードを取得してから確認し、権利確認と保存の間に引き継がせない。
             for session in sessions:
                 session._validate()
             yield

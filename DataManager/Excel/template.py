@@ -38,6 +38,8 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
     """
     if "__report__" not in wb:
         raise ReportError("テンプレートに設定シート '__report__' がありません")
+
+    # 設定シートから抽出条件を読み、表示シートのマーカー位置と組み合わせる。
     cfg = wb["__report__"]
     sort_field = cfg["B1"].value
     descending = cfg["B2"].value
@@ -47,6 +49,7 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
         sort_field = sort_field.strip() or None
     if not isinstance(descending, bool):
         raise ReportError("__report__!B2 はTRUE/FALSEで指定してください")
+
     # A5:E... にシート／AND or OR／フィールド／比較演算子／比較値。
     # C列はrecord.department / item.kindのように書ける（無指定ならItem）。
     rule_map: dict[str, dict] = {}
@@ -62,8 +65,7 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
         raw_field = field.strip()
         if "." in raw_field:
             source, field = raw_field.split(".", 1)
-            _require(source in ("record", "item") and field.isidentifier(),
-                     f"条件の対象・フィールド指定が不正です: {raw_field!r}")
+            _require(source in ("record", "item") and field.isidentifier(), f"条件の対象・フィールド指定が不正です: {raw_field!r}")
         else:
             source, field = "item", raw_field  # 旧テンプレートとの互換性
         _require(field.isidentifier(), f"条件のフィールド名が不正です: {field!r}")
@@ -72,6 +74,7 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
         entry = rule_map.setdefault(name, {"logic": logic, "conditions": []})
         _require(entry["logic"] == logic, f"シート '{name}' 内のAND/ORが混在しています")
         entry["conditions"].append(Comparison.model_validate({"source": source, "field": field, "op": op, "value": value}))
+
     # G5:J... にシート／位置／表示名／照合キー。
     # J列を省略した旧テンプレートでは表示名をそのまま照合キーに使う。
     title_map: dict[str, dict[int, tuple[str, str]]] = {}
@@ -89,6 +92,7 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
         _require(pos not in title_map.setdefault(name, {}), f"シート '{name}' の位置{pos}が重複")
         title_map[name][pos] = (title, key)
 
+    # 設定を読み終えてから各シートを走査し、出力定義と書込位置を同時に確定する。
     sheets = []
     placements = {}
     for ws in wb.worksheets:
@@ -100,6 +104,8 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
                  f"シート '{ws.title}' のItem見出しは1から連番で登録してください")
         markers: dict[str, list[tuple[int, int, str]]] = {"header": [], "record": [], "item": []}
         titles = []
+
+        # マーカーの実セルから、繰り返してよいItemブロックの範囲を求める。
         for row in ws:
             for cell in row:
                 # 結合従属セルには目印を置けない。実セルだけを対象に座標の型も確定する。
@@ -112,6 +118,7 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
                     match = MARKER.fullmatch(cell.value)
                     if match:
                         markers[match.group(1)].append((cell.row, cell.column, match.group(2)))
+
         _require(len(titles) == 1, f"シート '{ws.title}' に{{{{item_title}}}}を1個置いてください")
         _require(bool(markers["item"]), f"シート '{ws.title}' のItem見本セルがありません")
         data_rows = {row for row, _, _ in markers["item"] + markers["record"]}
@@ -121,13 +128,10 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
         _require(title_row < data_row, f"シート '{ws.title}' のItemタイトルは見本行より上に置いてください")
         item_cells = sorted(markers["item"], key=lambda c: c[1])
         item_cols = [col for _, col, _ in item_cells]
-        _require(item_cols == list(range(min(item_cols), max(item_cols) + 1)),
-                 f"シート '{ws.title}' のItem見本列は連続させてください")
-        _require(first_title_col == min(item_cols),
-                 f"シート '{ws.title}' の{{{{item_title}}}}はItem見本の左端に置いてください")
+        _require(item_cols == list(range(min(item_cols), max(item_cols) + 1)), f"シート '{ws.title}' のItem見本列は連続させてください")
+        _require(first_title_col == min(item_cols), f"シート '{ws.title}' の{{{{item_title}}}}はItem見本の左端に置いてください")
         record_cells = sorted(markers["record"], key=lambda c: c[1])
-        _require(all(col < min(item_cols) for _, col, _ in record_cells),
-                 f"シート '{ws.title}' のRecord列はItemの左側に置いてください")
+        _require(all(col < min(item_cols) for _, col, _ in record_cells), f"シート '{ws.title}' のRecord列はItemの左側に置いてください")
         _require(len({field for _, _, field in item_cells}) == len(item_cells),
                  f"シート '{ws.title}' で同一Itemフィールドが重複しています")
         # 複製対象のItemブロックをまたぐセル結合は事故の元なので禁止。
@@ -140,6 +144,8 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
                      f"シート '{ws.title}' にItemブロックを横断する結合があります: {merged}")
             _require(merged.min_row >= title_row and merged.max_row <= data_row,
                      f"シート '{ws.title}' にItemブロックを縦断する結合があります: {merged}")
+
+        # 描画側にはセル走査を持ち込まず、検証済みの定義と座標を渡す。
         header_map: dict[str, list[tuple[int, int]]] = {}
         for row, col, field in markers["header"]:
             _require(row < title_row, f"シート '{ws.title}' の上部情報はItem見出しより上に配置してください")
@@ -159,4 +165,5 @@ def load_template(wb: Workbook) -> tuple[ReportSpec, dict[str, Placement]]:
             record_cols=[col for _, col, _ in record_cells], item_cols=item_cols,
             header_cells=header_map,
         )
+
     return ReportSpec(sort_field=sort_field, descending=descending, sheets=sheets), placements

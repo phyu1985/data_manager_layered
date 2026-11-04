@@ -28,10 +28,9 @@ def analyze_readings(presets: AnalysisPresets) -> AnalysisResult:
         raise ValueError("測定値は有限値が必要です")
 
     # IDの一意性は前提にしない。位置で指定すれば同じIDの行も失われない。
-    indices = tuple(sorted(
-        range(len(source)),
-        key=lambda i: (abs(source[i][1] - threshold), source[i][0]),
-    ))
+    indices = tuple(sorted(range(len(source)), key=lambda i: (abs(source[i][1] - threshold), source[i][0]),))
+
+    # 集計は確認用、位置の一覧は編集への反映用として一緒に返す。
     summary = ReviewSummary(
         threshold=threshold,
         mean_value=fmean(source[i][1] for i in indices),

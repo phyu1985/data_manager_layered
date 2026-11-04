@@ -18,9 +18,7 @@ class ExternalUpdater:
     再試行できるよう、接続先の関数は繰り返しても重複登録しない実装にする。
     """
 
-    def __init__(
-        self, workspace: AnalysisWorkspace, *, targets: Mapping[str, ExternalWriter],
-    ):
+    def __init__(self, workspace: AnalysisWorkspace, *, targets: Mapping[str, ExternalWriter]):
         if not targets or any(not name for name in targets):
             raise ValueError("名前付きの外部反映先を一つ以上指定してください")
 
@@ -43,14 +41,13 @@ class ExternalUpdater:
         with self._workspace.saved_snapshot(presets=presets) as snapshot:
             return self._update_targets(snapshot, selected_names)
 
-    def _update_targets(
-        self, snapshot: AnalysisPresets, selected_names: Sequence[str],
-    ) -> ExternalUpdateResult:
+    def _update_targets(self, snapshot: AnalysisPresets, selected_names: Sequence[str]) -> ExternalUpdateResult:
         """ 一つの失敗で他の反映を止めず、ファイル保存を巻き戻さない。
         """
         succeeded_targets: list[str] = []
         failures: list[ExternalUpdateFailure] = []
 
+        # 保存済みの一つのスナップショットを使い、接続先ごとの成否を独立して集める。
         for name in selected_names:
             try:
                 # 外部処理の変更が別接続先の入力や画面の編集値へ混入するのを防ぐ。

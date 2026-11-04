@@ -151,9 +151,7 @@ class YamlSerializer:
             return value
         raise SerializationError(f"通常のYAML値として扱えない型です: {type(value).__name__}")
 
-    def _merge_document(
-        self, destination: dict[str, Any], source: dict[str, Any], *, copy_comments: bool,
-    ):
+    def _merge_document(self, destination: dict[str, Any], source: dict[str, Any], *, copy_comments: bool):
         """ マッピングを再帰的に重ね、配列と単一値は全体を置き換える。
         """
         destination_node: Any = destination
@@ -184,24 +182,55 @@ class YamlSerializer:
         self, value: ModelValue, model_binding: ModelBinding[ModelValue], *,
         existing_text: str | None = None, template_text: str | None = None,
     ) -> str:
-        """ 文書へ指定型の値を重ね、YAML文字列を返す。
+        """ テンプレート・既存文書・モデル値を重ね、未指定の既存項目も残す。
         """
-        document = self._load_document(template_text or "")
+        return self._dump_document(value, model_binding, existing_text, template_text, exact_fields=False)
 
-        # 優先順はテンプレート→既存文書→モデル値。ここではファイルを読み直さない。
+    def dumps_exact(
+        self, value: ModelValue, model_binding: ModelBinding[ModelValue], *,
+        existing_text: str | None = None, template_text: str | None = None,
+    ) -> str:
+        """ 出力項目はモデル値に限定し、存続するキーの配置・コメントを再利用する。
+        """
+        return self._dump_document(value, model_binding, existing_text, template_text, exact_fields=True)
+
+    def _keep_output_fields(self, document: dict[str, Any], values: dict[str, Any]):
+        """ 全階層で廃止キーを除く。テンプレートの既定値からも復活させない。
+        """
+        for key in list(document):
+            if key not in values:
+                del document[key]
+            elif isinstance(document[key], dict) and isinstance(values[key], dict):
+                # YAMLアンカーで共有された辞書も、出力先ごとに独立して更新する。
+                child: Any = deepcopy(document[key])
+                child.yaml_set_anchor(None)
+                document[key] = child
+                self._keep_output_fields(document[key], values[key])
+
+    def _dump_document(
+        self, value: ModelValue, model_binding: ModelBinding[ModelValue],
+        existing_text: str | None, template_text: str | None, *, exact_fields: bool,
+    ) -> str:
+        # まず書式の土台を作る。既存文書のコメントをテンプレートより優先する。
+        document = self._load_document(template_text or "")
         if existing_text is not None:
-            existing_document = self._load_document(existing_text)
-            self._merge_document(document, existing_document, copy_comments=True)
+            self._merge_document(document, self._load_document(existing_text), copy_comments=True)
 
         data = model_binding.to_dict(value, by_alias=self._dump_options.by_alias)
         self._to_plain_value(data, set())
+
+        # 版変換後の辞書が保存仕様の正本。既存文書は書式だけに利用する。
+        if exact_fields:
+            self._keep_output_fields(document, data)
         self._merge_document(document, data, copy_comments=False)
 
+        # 値の反映を終えた編集用文書を、最後にYAML文字列へ書き出す。
         output = StringIO()
         try:
             self._create_yaml_handler().dump(document, output)
         except YAMLError as error:
             raise SerializationError(f"YAMLへ変換できません: {error}") from error
+
         return output.getvalue()
 
     def loads(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> ModelValue:

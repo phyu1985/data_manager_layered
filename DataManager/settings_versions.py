@@ -1,5 +1,6 @@
 """ 設定の隣接版変換と、現在モデルへの復元規則を一か所に置く。
 """
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -92,11 +93,18 @@ def encode_settings(document: SettingsDocument) -> dict[str, Any]:
     }
 
 
-def create_settings_repository(directory: Path, *, commit_guard: CommitGuard | None = None) -> VersionedObjectRepository[SettingsDocument]:
+def create_settings_repository(
+    directory: Path, *, commit_guard: CommitGuard | None = None,
+    template_directory: Path | None = None,
+    templates_by_version: Mapping[int, Mapping[str, str | Path]] | None = None,
+) -> VersionedObjectRepository[SettingsDocument]:
     """ ファイル形式の設定と業務の互換規則を、この組立箇所だけで接続する。
     """
     return VersionedObjectRepository(
-        repository=ObjectRepository(model=dict, base_directory=directory, commit_guard=commit_guard),
+        repository=ObjectRepository(
+            model=dict, base_directory=directory, commit_guard=commit_guard,
+            template_directory=template_directory,
+        ),
         converter=VersionConverter(
             current_version=3,
             upcasts={0: upcast_v0_to_v1, 1: upcast_v1_to_v2, 2: upcast_v2_to_v3},
@@ -104,6 +112,7 @@ def create_settings_repository(directory: Path, *, commit_guard: CommitGuard | N
         ),
         decode_current=decode_settings,
         encode_current=encode_settings,
+        templates_by_version=templates_by_version,
     )
 
 

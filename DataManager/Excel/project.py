@@ -123,9 +123,7 @@ def _validate_fields(spec: ReportSpec, record_model: type[BaseModel], item_model
             raise ReportError(f"シート '{sheet.name}' のitem_keysにはitem_title_fieldが必要です")
         if sheet.item_title_field is not None:
             if sheet.item_title_field not in item_fields:
-                raise ReportError(
-                    f"シート '{sheet.name}' のタイトル項目 '{sheet.item_title_field}' がありません"
-                )
+                raise ReportError(f"シート '{sheet.name}' のタイトル項目 '{sheet.item_title_field}' がありません")
             keys = sheet.item_keys if sheet.item_keys is not None else sheet.item_titles
             if len(keys) != len(sheet.item_titles):
                 raise ReportError(f"シート '{sheet.name}' のItemキーと見出し名の数が一致しません")
@@ -142,10 +140,7 @@ def _validate_fields(spec: ReportSpec, record_model: type[BaseModel], item_model
         for condition in sheet.conditions:
             fields = rec_fields if condition.source == "record" else item_fields
             if condition.field not in fields or (condition.source == "record" and condition.field == "items"):
-                raise ReportError(
-                    f"シート '{sheet.name}' の{condition.source}条件フィールド "
-                    f"'{condition.field}' が不正です"
-                )
+                raise ReportError(f"シート '{sheet.name}' の{condition.source}条件フィールド '{condition.field}' が不正です")
 
 
 def project(
@@ -168,6 +163,8 @@ def project(
         if spec.sort_field is not None else list(_get(record, "items"))
         for record in records
     ]
+
+    # シートごとに対象を選び、共通ヘッダとRecord/Itemの表へ組み立てる。
     sheets = []
     for sheet in spec.sheets:
         record_conditions = [c for c in sheet.conditions if c.source == "record"]
@@ -177,25 +174,24 @@ def project(
             for record, items in zip(records, ordered_items)
             if _record_matches(record, items, record_conditions, item_conditions, sheet.logic)
         ]
+
+        # シート上部の共通値は、選ばれた全Recordで一致するときだけ表示する。
         headers = []
         for col in sheet.headers:
             values = [_get(record, col.field) for record, _ in chosen]
             if values and any(value != values[0] for value in values[1:]):
                 raise ReportError(f"シート '{sheet.name}' の共通項目 '{col.field}' の値が一致しません")
-            headers.append(HeaderData(field=col.field, label=col.heading,
-                                      value=values[0] if values else None))
+            headers.append(HeaderData(field=col.field, label=col.heading, value=values[0] if values else None))
 
         item_count = max((len(items) for _, items in chosen), default=0)
         # title一致を使うときは、途中のItemが欠けても列位置を固定する。
-        count = (len(sheet.item_titles) if sheet.item_title_field is not None
-                 else max(1, item_count))
+        count = len(sheet.item_titles) if sheet.item_title_field is not None else max(1, item_count)
         if count > len(sheet.item_titles):
-            raise ReportError(
-                f"シート '{sheet.name}' はItemが最大{count}件ですが、"
-                f"見出し名が{len(sheet.item_titles)}件分しかありません"
-            )
+            raise ReportError(f"シート '{sheet.name}' はItemが最大{count}件ですが、見出し名が{len(sheet.item_titles)}件分しかありません")
         keys = sheet.item_keys if sheet.item_keys is not None else sheet.item_titles
         key_positions = {key: index for index, key in enumerate(keys)}
+
+        # 見出しの位置を確定し、各RecordのItemをその列へ配置する。
         rows = []
         for record, items in chosen:
             if sheet.item_title_field is None:
@@ -211,29 +207,26 @@ def project(
                 for item in items:
                     key = _get(item, sheet.item_title_field)
                     if not isinstance(key, str):
-                        raise ReportError(
-                            f"シート '{sheet.name}' のItemキーが文字列ではありません: {key!r}"
-                        )
+                        raise ReportError(f"シート '{sheet.name}' のItemキーが文字列ではありません: {key!r}")
                     # 他のシートで使うキーは、このシートでは出力しない。
                     if key not in key_positions:
                         continue
                     index = key_positions[key]
                     if index in occupied:
-                        raise ReportError(
-                            f"シート '{sheet.name}' の同一Record内でItemキー '{key}' が重複しています"
-                        )
+                        raise ReportError(f"シート '{sheet.name}' の同一Record内でItemキー '{key}' が重複しています")
                     occupied.add(index)
-                    item_values[index] = [
-                        _get(item, col.field) for col in sheet.item_columns
-                    ]
+                    item_values[index] = [_get(item, col.field) for col in sheet.item_columns]
+
             rows.append(RowData(
                 record_values=[_get(record, col.field) for col in sheet.record_columns],
                 item_values=item_values,
             ))
+
         sheets.append(SheetData(
             name=sheet.name, headers=headers,
             record_headings=[col.heading for col in sheet.record_columns],
             item_headings=[col.heading for col in sheet.item_columns],
             item_titles=sheet.item_titles[:count], rows=rows,
         ))
+
     return WorkbookData(sheets=sheets)

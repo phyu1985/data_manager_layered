@@ -18,11 +18,7 @@ class ReportGenerator(Generic[TItem]):
     """ 指定したRecord・Itemモデルに対応する帳票生成器。
     """
 
-    def __init__(
-        self,
-        record_model: type[ReportRecord[TItem]],
-        item_model: type[TItem],
-    ):
+    def __init__(self, record_model: type[ReportRecord[TItem]], item_model: type[TItem]):
         # Pydantic BaseModelだけでなく、帳票用I/Fの継承を要求する。
         # これでRecord.itemsとItem.titleの存在を生成時点で保証できる。
         if not isinstance(record_model, type) or not issubclass(record_model, ReportRecord):
@@ -41,10 +37,7 @@ class ReportGenerator(Generic[TItem]):
             or not issubclass(declared_item_model, ReportItem)
             or not issubclass(item_model, declared_item_model)
         ):
-            raise TypeError(
-                "Record.itemsの要素型とitem_modelが対応していません: "
-                f"{annotation!r} / {item_model.__name__}"
-            )
+            raise TypeError(f"Record.itemsの要素型とitem_modelが対応していません: {annotation!r} / {item_model.__name__}")
 
         self._record_model = record_model
         self._item_model = item_model
@@ -70,7 +63,8 @@ class ReportGenerator(Generic[TItem]):
     def template(self, records: Sequence[ReportRecord[TItem]], template_path: str | Path) -> Workbook:
         """ Excelテンプレートの帳票定義に従って出力する。
         """
-        # 外部ブックリンクは帳票へ引き継がない（前回の警告対策）。
+        # 雛形から定義と座標を読み、データを確定してからセルへ反映する。
+        # 外部ブックリンクは帳票へ引き継がない。
         wb = load_workbook(template_path, keep_links=False)
         spec, placements = load_template(wb)
         data = self.prepare(records, spec)

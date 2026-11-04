@@ -25,3 +25,4 @@ jobs:
       - run: python -m examples.metadata
       - run: python -m examples.extended_formats outputs/ci-extended --pandas
       - run: python -m examples.shared_editing outputs/ci-shared
+      - run: python -m examples.versioned_files outputs/ci-versioned-files

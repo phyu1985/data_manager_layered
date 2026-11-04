@@ -4,12 +4,11 @@ from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.documents import RowsDocument
 from DataManager.file_io import lock_directory
 from DataManager.repositories import ObjectRepository, RowsRepository, RowsDocumentRepository
-from DataManager.serializers.csv import (
-    CsvOptions, CsvSerializer, CSVDumpOptions, CSVLoadOptions, CSVMetadataOptions,
-)
+from DataManager.serializers.csv import CsvOptions, CsvSerializer, CSVDumpOptions, CSVLoadOptions, CSVMetadataOptions
 from DataManager.serializers.kv import KvOptions, KvSerializer
 from DataManager.serializers.custom_text import CustomTextOptions, CustomTextSerializer
 from DataManager.serializers.block_rows import BlockRowsOptions, BlockRowsSerializer
+from DataManager.serializers.attribute_blocks import AttributeBlockSerializer
 from DataManager.serializers.json import JsonDumpOptions, JsonSerializer
 from DataManager.serializers.jsonl import JSONLDumpOptions, JSONLLoadOptions, JsonlSerializer
 from DataManager.serializers.yaml import YamlDumpOptions, YamlSerializer
@@ -32,7 +31,7 @@ __all__ = [
     "FileService", "FileReader", "FileWriter", "RowsDocumentRepository",
     "VersionedObjectRepository", "VersionedRowsRepository",
     "ConfigurationError", "SerializationError", "ObjectRepository", "RowsRepository", "RowsDocument",
-    "CsvOptions", "CsvSerializer", "KvOptions", "KvSerializer", "BlockRowsOptions", "BlockRowsSerializer",
+    "CsvOptions", "CsvSerializer", "KvOptions", "KvSerializer", "BlockRowsOptions", "BlockRowsSerializer", "AttributeBlockSerializer",
     "JsonDumpOptions", "JsonSerializer", "JSONLDumpOptions", "JSONLLoadOptions", "JsonlSerializer",
     "YamlDumpOptions", "YamlSerializer", "CSVDumpOptions", "CSVLoadOptions", "CSVMetadataOptions",
     "CustomTextOptions", "CustomTextSerializer", "ObjectFileService", "RowsFileService", "WaveformFileService",

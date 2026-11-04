@@ -16,6 +16,7 @@ from Domain.results import AnalysisResult
 def apply_analysis_result(presets: AnalysisPresets, result: AnalysisResult):
     """ 計算時と同じ入力にだけ、解析で決めた並び順を反映する。保存は別操作。
     """
+    # 計算時の入力と照合し、待ち時間中の編集へ古い結果を上書きしない。
     current = tuple((row.measurement_id, row.value) for row in presets.measurements)
     if presets.threshold != result.summary.threshold or current != result.source_measurements:
         raise ValueError("解析後に入力が変更されています。再計算してください")
@@ -71,6 +72,8 @@ class AnalysisWorkspace:
         """
         if self._edit is not None:
             raise EditConflictError("同じ作業窓口で編集を重ねて開始できません")
+
+        # 読取前に編集権を取り、画面へ渡すPresetsと同じ権利を保存時にも確認する。
         with self._storage.edit(self._directory, force=force) as session:
             document = self._files.load()
             session.check()
@@ -88,6 +91,7 @@ class AnalysisWorkspace:
         state = self._edit
         if state is None or state.thread_id != get_ident() or state.document.presets is not presets:
             raise RuntimeError("同じスレッドの有効な編集セッションと、そのPresetsが必要です")
+
         state.session.check()
         return state.document
 
@@ -120,6 +124,7 @@ class AnalysisWorkspace:
         state = self._edit
         if state is None or state.thread_id != get_ident():
             raise RuntimeError("有効な編集セッションが必要です")
+
         with state.session.commit_guard(path):
             yield
 
@@ -128,6 +133,7 @@ class AnalysisWorkspace:
         """
         if self._edit is not None:
             raise RuntimeError("編集中に初回保存を開始できません")
+
         with self._storage.edit(self._directory) as session:
             self._edit = _EditState(AnalysisDocument(presets, retained_values or {}), get_ident(), session)
             try:

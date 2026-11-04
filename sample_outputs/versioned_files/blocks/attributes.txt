@@ -1,0 +1,22 @@
+# name,ch,start,length
+# info_name1,info_value1,start,length
+# info_name2,info_value2,start,length
+# info_name3,info_value3,start,length
+# info_name4,info_value4,start,length
+# info_name5,info_value5,start,length
+# info_name6,info_value6,start,length
+# info_name7,info_value7,start,length
+# info_name8,info_value8,start,length
+# axis_mm,length_mm
+#
+sample,1,100,200
+attr1,0.0,100,2
+attr2,0.1,101,2
+attr3,0.2,102,2
+attr4,0.3,103,2
+attr5,0.4,104,2
+attr6,0.5,105,2
+attr7,0.6,106,2
+attr8,0.7,107,2
+10.0,20.0
+#

@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "threshold": 20.0,
+  "gain": 2.0,
+  "retained_values": {}
+}

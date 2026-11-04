@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from DataManager import ConfigurationError, ObjectRepository, RowsRepository, SerializationError, VersionConverter
+from DataManager import ConfigurationError, FileService, ObjectRepository, RowsRepository, SerializationError, VersionConverter
 from UseCase.processing import load_processing_presets
 from UseCase.analysis import AnalysisWorkspace
 from Domain.processing import process_data
@@ -95,13 +95,39 @@ def test_retained_and_discarded_fields_survive_restart_as_intended(tmp_path: Pat
 
 
 def test_yaml_versioned_overwrite_does_not_resurrect_removed_keys(tmp_path: Path):
-    (tmp_path / "settings.yaml").write_text("version: 2\nthreashold: 4\ndraft_flag: discard\n", encoding="utf-8")
-    service = create_settings_repository(tmp_path)
-    document = service.load("settings.yaml")
+    target = tmp_path / "settings.yaml"
+    target.write_text(
+        "# Existing settings\nversion: 2  # file-version\nthreashold: 4\ndraft_flag: discard\n", encoding="utf-8",
+    )
+    templates = tmp_path / "templates"
+    templates.mkdir()
+    template = templates / "v3.yaml"
+    template.write_text(
+        "version: 3\nthreshold: 0  # decision-level\ngain: 1\n"
+        "template_only: discard\nretained_values: {removed: discard}\n", encoding="utf-8",
+    )
+    (templates / "v2.yaml").write_text("# Legacy layout\nversion: 2\nthreashold: 0\ngain: 99\n", encoding="utf-8")
+    original_template = template.read_bytes()
+    repository = create_settings_repository(
+        tmp_path, template_directory=templates,
+        templates_by_version={3: {".yaml": "v3.yaml"}, 2: {".yaml": "v2.yaml"}},
+    )
+    file = FileService(repository=repository, path="settings.yaml")
+    document = file.load()
     with pytest.raises(FileExistsError):
-        service.save("settings.yaml", document)
-    service.save("settings.yaml", document, overwrite=True)
-    assert "draft_flag" not in (tmp_path / "settings.yaml").read_text(encoding="utf-8")
+        file.save(document)
+    file.save(document, overwrite=True)
+    text = target.read_text(encoding="utf-8")
+    assert all(comment in text for comment in ["Existing settings", "file-version", "decision-level"])
+    assert all(key not in text for key in ["draft_flag", "template_only", "removed"])
+    assert template.read_bytes() == original_template
+
+    legacy = FileService(repository=repository.for_version(2), path="legacy.yaml")
+    legacy.save(document)
+    assert "Legacy layout" in (tmp_path / "legacy.yaml").read_text(encoding="utf-8")
+    assert ObjectRepository(model=dict, base_directory=tmp_path).load("legacy.yaml") == {
+        "version": 2, "threashold": 4,
+    }
 
 
 def test_reanalysis_saves_only_settings_and_reload_reads_manual_edit(tmp_path: Path):

@@ -20,6 +20,8 @@ def to_frame(
 
     if len(set(columns)) != len(columns) or not columns:
         raise ValueError("columnsは空でない重複のない列名リストです")
+
+    # 列の脱落を先に検出し、指定された順序と型で表へ変換する。
     records = [
         row.model_dump(mode="python") if isinstance(row, BaseModel)
         else ModelBinding[dict[str, Any]](dict).to_dict(row, by_alias=False)
@@ -27,6 +29,7 @@ def to_frame(
     ]
     if any(set(row) - set(columns) for row in records):
         raise ValueError("指定したDataFrame列に含まれない項目があります")
+
     frame = pd.DataFrame.from_records(records, columns=list(columns))
     return frame.astype(dict(dtypes)) if dtypes is not None else frame
 
@@ -36,6 +39,7 @@ def from_frame(frame: "pd.DataFrame", *, model: type[ModelValue]) -> list[ModelV
     """
     if not frame.columns.is_unique or any(not isinstance(column, str) for column in list[object](frame.columns)):
         raise ValueError("DataFrameの列名は重複のない文字列が必要です")
+    # pandas固有の欠損表現をNoneへ揃え、通常のモデル復元へ渡す。
     binding = ModelBinding(model)
     records = frame.astype(object).where(frame.notna(), None).to_dict(orient="records")
     # 全列名を上で実行時確認した後のcastであり、値の検証はrestore_valueが行う。

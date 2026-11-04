@@ -7,9 +7,7 @@ from typing import Any, cast
 from DataManager.errors import ConfigurationError, SerializationError
 
 
-def flatten_fields(
-    data: dict[str, Any], *, separator: str,
-) -> dict[str, Any]:
+def flatten_fields(data: dict[str, Any], *, separator: str) -> dict[str, Any]:
     """ 辞書の階層を展開する。空の辞書と配列は値として残す。
     """
     if not separator:
@@ -41,9 +39,7 @@ def flatten_fields(
     return flattened_fields
 
 
-def unflatten_fields(
-    flattened_fields: dict[str, Any], *, separator: str,
-) -> dict[str, Any]:
+def unflatten_fields(flattened_fields: dict[str, Any], *, separator: str) -> dict[str, Any]:
     """ 区切り付きフィールド名を辞書へ戻し、葉と親の衝突を拒否する。
     """
     if not separator:
@@ -65,6 +61,7 @@ def unflatten_fields(
         ):
             raise SerializationError(f"階層フィールドが衝突しています: {field_path!r}")
 
+        # 葉の手前まで辞書を用意し、最後の一段へ値を置く。
         current_fields = restored_fields
         for path_part in path_parts[:-1]:
             if path_part not in current_fields:

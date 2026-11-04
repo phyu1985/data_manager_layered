@@ -67,12 +67,7 @@ def parse_json_object(serialized_text: str) -> dict[str, Any]:
     return cast(dict[str, Any], parsed_value)
 
 
-def serialize_json_object(
-    data: dict[str, Any],
-    *,
-    ensure_ascii: bool,
-    indent: int | None,
-) -> str:
+def serialize_json_object(data: dict[str, Any], *, ensure_ascii: bool, indent: int | None) -> str:
     """ 辞書をJSON文字列へ変換し、表現できない値を失敗として伝える。
     """
     # 任意のPython値を文字列へ補正すると復元不能になるため、表現できない値はエラーにする。
@@ -118,10 +113,7 @@ class JsonSerializer:
             raise ConfigurationError("JSONは既存文書のマージに対応しません")
 
         # 型の確認とモデル固有の変換は共通処理へ任せ、JSONの規則と分ける。
-        data = model_binding.to_dict(
-            value,
-            by_alias=self._dump_options.by_alias,
-        )
+        data = model_binding.to_dict(value, by_alias=self._dump_options.by_alias)
 
         return serialize_json_object(
             data,

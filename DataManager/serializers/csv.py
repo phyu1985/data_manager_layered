@@ -137,9 +137,7 @@ class CsvSerializer:
             raise SerializationError("CSVの列名は空欄・重複のない1個以上を指定してください")
 
         # 値を入れる前に、親の列aと子の列a.bが共存していないか確認する。
-        unflatten_fields(
-            dict.fromkeys(columns), separator=self._options.separator,
-        )
+        unflatten_fields(dict.fromkeys(columns), separator=self._options.separator)
 
     def _columns_for_empty_models(
         self, model_class: type[Any], prefix: str = "", *,
@@ -194,11 +192,10 @@ class CsvSerializer:
         self.validate_model_configuration(model_binding)
         flattened_rows: list[dict[str, Any]] = []
 
+        # 先に全行を辞書化し、階層を列名へ展開してCSVで表せる値か確認する。
         for value in rows:
             data = model_binding.to_dict(value, by_alias=self._options.by_alias)
-            flattened_fields = flatten_fields(
-                data, separator=self._options.separator,
-            )
+            flattened_fields = flatten_fields(data, separator=self._options.separator)
             if any(
                 item is not None and not isinstance(item, (str, int, float, bool, date, datetime, Decimal, UUID))
                 for item in flattened_fields.values()
@@ -217,6 +214,7 @@ class CsvSerializer:
         if any(set(row) - set(columns) for row in flattened_rows):
             raise SerializationError("指定したCSV列に含まれない値があります")
 
+        # 列順を確定してから、見出しと各行を同じ構成で出力する。
         output = StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\n")
         if self._options.include_header:
@@ -248,6 +246,8 @@ class CsvSerializer:
         keys = options.metadata_keys if options.metadata_layout == "values" else tuple(metadata)
         if keys is None or set(keys) != set(metadata):
             raise SerializationError("値だけのメタはmetadata_keysと保存項目が一致する必要があります")
+
+        # metaを先頭へ書き、設定された境界の後ろへ通常の本文を連結する。
         output = StringIO(newline="")
         writer = csv.writer(output, lineterminator="\n")
         for key in keys:
@@ -319,6 +319,7 @@ class CsvSerializer:
         self.validate_model_configuration(model_binding)
         reader = csv.reader(StringIO(serialized_text, newline=""), strict=True)
         try:
+            # 列名行の有無と置換設定から、各セルの復元先を一度だけ決める。
             if self._options.has_header:
                 header = next(reader, None)
                 if header is None:
@@ -334,6 +335,7 @@ class CsvSerializer:
                 raise SerializationError("CSVの列名が空欄・重複、または未指定です")
             unflatten_fields(dict.fromkeys(columns), separator=(self._options.read_separator or self._options.separator))
 
+            # セル数を照合し、列の階層を戻してから一件ずつモデルで検証する。
             restored_values: list[ModelValue] = []
             for cells in reader:
                 if not cells:
@@ -346,13 +348,12 @@ class CsvSerializer:
                     name: None if cell == "" and self._options.empty_as_none else cell
                     for name, cell in zip(columns, cells)
                 }
-                data = unflatten_fields(
-                    row_values, separator=(self._options.read_separator or self._options.separator),
-                )
+                data = unflatten_fields(row_values, separator=(self._options.read_separator or self._options.separator))
                 try:
                     restored_values.append(model_binding.restore_value(data))
                 except ValidationError as error:
                     raise SerializationError(f"CSV行{reader.line_num}: {error}") from error
+
             return restored_values
         except csv.Error as error:
             raise SerializationError(f"CSV行{reader.line_num}: {error}") from error

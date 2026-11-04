@@ -9,6 +9,7 @@
 | `python main.py outputs/demo-xlsx --report-format xlsx` | 同じ処理からExcel帳票 | 指定先 |
 | `python -m examples.extended_formats outputs/extended --pandas` | キーなしメタ・列名置換・KV・複数行・2表・位置依存入力・版変換・DataFrame | 指定先 |
 | `python -m examples.shared_editing outputs/shared` | 共有管理領域・通常編集・強制引継ぎ・失効後保存拒否 | 指定先 |
+| `python -m examples.versioned_files outputs/versioned-files` | YAMLの版別テンプレート・Rowsのmetaキャスト・属性8行 | 指定先 |
 | `python -m examples.metadata` | CSVの空行・マーカー・固定件数とJSONLで共通のメタ入出力 | outputs/metadata |
 | `python -m examples.formats` | JSON/YAML/text/CSV/混在JSONL/dict/合成波形 | outputs/formats |
 | `python -m examples.application_services outputs/services` | 保存先とモデルを事前構成したservicesの使い方 | outputs/services |

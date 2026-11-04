@@ -60,6 +60,7 @@ class AnalysisFiles:
     def load(self) -> AnalysisDocument:
         """ 保存済みの一式を読み、現在の解析用Presetsへ組み直す。
         """
+        # ファイルごとの版・文法をRepositoryで解消し、処理に必要な値だけを集める。
         document = self._settings.load()
         settings = document.settings
         measurements = self._measurements.load()
@@ -79,9 +80,7 @@ class AnalysisFiles:
             retained_values=dict(retained_values),
         )
 
-    def save_settings(
-        self, presets: AnalysisPresets, retained_values: dict[str, Any], *, overwrite: bool = False,
-    ):
+    def save_settings(self, presets: AnalysisPresets, retained_values: dict[str, Any], *, overwrite: bool = False):
         """ 現在版の設定を通常の保存先へ保存する。
         """
         self._settings.save(self._settings_document(presets, retained_values), overwrite=overwrite)
@@ -110,6 +109,7 @@ class AnalysisFiles:
             if target.exists() or target.is_symlink():
                 raise FileExistsError(f"初回保存先に既存データがあります: {target}")
 
+        # 初回だけ一式を揃える。失敗したら今回作成したファイルを対象に後始末する。
         attempted: list[Path] = []
         try:
             # 保存直後に例外が出ても対象を追跡できるよう、実行前に記録する。

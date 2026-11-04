@@ -45,13 +45,13 @@ def render_code(data: WorkbookData) -> Workbook:
 
 def _style_header(cell, *, dark: bool = False):
     cell.fill = PatternFill("solid", fgColor=BLUE if dark else PALE)
-    cell.font = Font(name="Meiryo", size=10, bold=True,
-                     color="FFFFFF" if dark else BLUE)
+    cell.font = Font(name="Meiryo", size=10, bold=True, color="FFFFFF" if dark else BLUE)
     cell.alignment = Alignment(horizontal="center", vertical="center")
     cell.border = TABLE_BORDER
 
 
 def _render_code_sheet(ws: Worksheet, sheet: SheetData):
+    # 上部の共通情報を先に描画し、その下に表の見出しと明細を配置する。
     for idx, header in enumerate(sheet.headers, start=1):
         title_cell, value_cell = ws.cell(idx, 1), ws.cell(idx, 2)
         _set_value(title_cell, header.label)
@@ -59,6 +59,7 @@ def _render_code_sheet(ws: Worksheet, sheet: SheetData):
         _style_header(title_cell)
         value_cell.alignment = Alignment(vertical="center")
         ws.row_dimensions[idx].height = 23
+
     top = len(sheet.headers) + 1
     lower = top + 1
     start_row = lower + 1
@@ -69,8 +70,7 @@ def _render_code_sheet(ws: Worksheet, sheet: SheetData):
         cell = ws.cell(top, idx)
         _set_value(cell, label)
         _style_header(cell, dark=True)
-        ws.merge_cells(start_row=top, start_column=idx,
-                       end_row=lower, end_column=idx)
+        ws.merge_cells(start_row=top, start_column=idx, end_row=lower, end_column=idx)
     for k, title in enumerate(sheet.item_titles):
         first = n_rec + k*n_item + 1
         last = first + n_item - 1
@@ -78,22 +78,23 @@ def _render_code_sheet(ws: Worksheet, sheet: SheetData):
         _set_value(cell, title)
         _style_header(cell, dark=True)
         if first < last:
-            ws.merge_cells(start_row=top, start_column=first,
-                           end_row=top, end_column=last)
+            ws.merge_cells(start_row=top, start_column=first, end_row=top, end_column=last)
         for offset, heading in enumerate(sheet.item_headings):
             c = ws.cell(lower, first + offset)
             _set_value(c, heading)
             _style_header(c)
+
+    # Record列の右にItemブロックを並べ、欠けた値は空セルとして残す。
     for i, row in enumerate(sheet.rows, start=start_row):
-        all_values = row.record_values + [
-            value for item in row.item_values for value in item
-        ]
+        all_values = row.record_values + [value for item in row.item_values for value in item]
         for col in range(1, n_rec + n_item*len(sheet.item_titles) + 1):
             cell = ws.cell(i, col)
             _set_value(cell, all_values[col-1] if col <= len(all_values) else None)
             cell.border = TABLE_BORDER
             cell.alignment = Alignment(vertical="center")
         ws.row_dimensions[i].height = 21
+
+    # 内容の配置後に列幅・固定位置・印刷範囲を整える。
     for col in range(1, n_rec + n_item*len(sheet.item_titles) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 20 if col <= n_rec else 15
     ws.row_dimensions[top].height = 26
@@ -140,8 +141,7 @@ def _paste(ws: Worksheet, row: int, col: int, snap: dict):
     cell.protection = copy(snap["protection"])
 
 
-def _check_empty(ws: Worksheet, start_row: int, end_row: int,
-                 start_col: int, end_col: int):
+def _check_empty(ws: Worksheet, start_row: int, end_row: int, start_col: int, end_col: int):
     # 既存値や結合セルを上書きしない。書式のみ設定済みの空セルは許容。
     for row in ws.iter_rows(min_row=start_row, max_row=end_row,
                             min_col=start_col, max_col=end_col):
@@ -235,8 +235,7 @@ def _render_template_sheet(ws: Worksheet, sheet: SheetData, place: Placement):
     ws.sheet_view.showGridLines = False
 
 
-def render_template(wb: Workbook, data: WorkbookData,
-                    placements: dict[str, Placement]) -> Workbook:
+def render_template(wb: Workbook, data: WorkbookData, placements: dict[str, Placement]) -> Workbook:
     for sheet in data.sheets:
         _render_template_sheet(wb[sheet.name], sheet, placements[sheet.name])
     wb.remove(wb["__report__"])

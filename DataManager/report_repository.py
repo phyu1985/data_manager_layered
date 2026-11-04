@@ -11,9 +11,7 @@ class ReportRepository:
     """ 共通明細をCSV / JSONLへ出し、Excelは既存帳票処理へ委譲する。
     """
 
-    def __init__(
-        self, directory: Path, *, excel_writer: Callable[[Sequence[ReportRow]], bytes] | None = None,
-    ):
+    def __init__(self, directory: Path, *, excel_writer: Callable[[Sequence[ReportRow]], bytes] | None = None):
         self._directory = directory.resolve()
         self._rows_repository = RowsRepository(model=ReportRow, base_directory=directory)
         self._excel_writer = excel_writer

@@ -1,0 +1,5 @@
+# Current settings
+version: 3
+threshold: 0  # Decision level
+gain: 1
+retained_values: {}

@@ -106,14 +106,11 @@ def write_file_atomically(path: Path, content: bytes, *, commit_guard: CommitGua
     呼び出し元が必要なロックを保持すること。失敗時も一時ファイルを片付ける。
     """
     # 置換が同じファイルシステム内で行われるよう、保存先と同じディレクトリへ作る。
-    file_descriptor, temporary_file_name = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-    )
+    file_descriptor, temporary_file_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     temporary_file_path = Path(temporary_file_name)
 
     try:
+        # 保存先へ触れる前に、一時ファイルの内容を最後まで書き出して同期する。
         with os.fdopen(file_descriptor, "wb") as stream:
             stream.write(content)
             stream.flush()

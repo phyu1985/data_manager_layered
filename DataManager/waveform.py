@@ -185,6 +185,7 @@ class BinaryWaveformSerializer:
     ) -> tuple[WaveformArray, list[int], dict[str, Any]]:
         """ 正規化した項目を確認し、必要なデータだけを読み出す。
         """
+        # ヘッダと明示オプションから、サンプルの幅・符号・バイト順を確定する。
         header_values = dict(header.values)
         channels = self._read_channels(header_values)
         endianness = self._options.endianness or header_values.get("endianness", "little")
@@ -220,6 +221,7 @@ class BinaryWaveformSerializer:
             if sample_count == 0 and samples_hint != 0:
                 raise WaveformFormatError("データ部が空です")
 
+        # 長さの整合が取れた本体だけを、サンプル×チャネル×(x,y)の配列へ戻す。
         prefix = "<" if endianness == "little" else ">"
         data_type = np.dtype(prefix + ("i2" if signed else "u2"))
         array = np.frombuffer(data_bytes, dtype=data_type).reshape(sample_count, len(channels), 2)
@@ -229,6 +231,7 @@ class BinaryWaveformSerializer:
         return cast(WaveformArray, array.copy()), channels, normalized_header
 
     def _load_from_stream(self, source: BinaryIO, path: Path) -> WaveformObject:
+        # 復号・ヘッダ解析・本体復元を同じ資源管理の中で完了させる。
         with ExitStack() as resources:
             stream = self._prepare_stream(source, path, resources)
             header = self._read_header(stream)

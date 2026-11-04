@@ -19,7 +19,7 @@ from DataManager.serializers.csv import CsvOptions, CsvSerializer
 RawDocument = RowsDocument[dict[str, Any], dict[str, Any]]
 
 
-class PositionalCaptureReader:
+class PositionalCaptureSerializer:
     """ CAPTURE、版/機器/件数、空白区切りの時刻/値を読む架空の旧形式。
 
     読取専用。標準KVやJSONへの出力は別のObjectRepositoryへ渡す。
@@ -39,6 +39,8 @@ class PositionalCaptureReader:
         lines = [line for line in serialized_text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
         if len(lines) < 2 or lines[0] != "CAPTURE":
             raise SerializationError("架空CAPTURE形式の開始行がありません")
+
+        # 先頭2行で版・機器・件数を確定し、それ以降の位置を旧キーへ対応付ける。
         header = shlex.split(lines[1])
         if len(header) != 3:
             raise SerializationError("CAPTUREヘッダは版・機器・件数の3値です")
@@ -48,12 +50,14 @@ class PositionalCaptureReader:
             raise SerializationError("版と件数は整数です") from error
         if number < 0 or len(lines[2:]) != number:
             raise SerializationError("CAPTUREの収録件数が一致しません")
+
         rows: list[dict[str, str]] = []
         for line in lines[2:]:
             cells = shlex.split(line)
             if len(cells) != 2:
                 raise SerializationError("CAPTUREのデータは2値です")
             rows.append({"tick": cells[0], "reading": cells[1]})
+
         return model_binding.restore_value({"version": version, "device": header[1], "rows": rows})
 
     def dumps(
@@ -93,6 +97,7 @@ class CaptureCsvFormat:
             index += 1
             return metadata
 
+        # 前半のヘッダが、最初の表の件数と後半のチャネル構成を決める。
         first_meta = metadata_until("[data]")
         try:
             number = int(first_meta["number"])
@@ -101,10 +106,13 @@ class CaptureCsvFormat:
             raise SerializationError("先頭ヘッダにnumberとchannel_countの整数が必要です") from error
         if number < 0 or channel_count <= 0:
             raise SerializationError("件数は0以上、チャンネル数は1以上です")
+
         first_cells = records[index:index + number + 1]
         index += number + 1
         if index >= len(records) or records[index] != ["[header2]"]:
             raise SerializationError("前半の件数と[header2]の位置が一致しません")
+
+        # 件数で求めた位置をマーカーでも確認し、後半のヘッダへ進む。
         index += 1
         second_meta = metadata_until("[channels]")
         try:
@@ -113,6 +121,8 @@ class CaptureCsvFormat:
             raise SerializationError("後半ヘッダにnumberの整数が必要です") from error
         if second_number < 0 or len(records[index:]) != second_number:
             raise SerializationError("後半の収録件数が一致しません")
+
+        # 後半には列名がないため、先頭ヘッダのチャネル数から復元先を作る。
         channels = tuple(f"channel_{i + 1}" for i in range(channel_count))
         second_meta = {**second_meta, "channel_count": channel_count}
         binding = ModelBinding[dict[str, Any]](dict)
@@ -147,6 +157,7 @@ class CaptureCsvFormat:
             + "[header2]\n" + self._text([[key, value] for key, value in second_meta.items()])
             + "[channels]\n" + second_text
         )
+        # 再読できる構造かを確認してから返し、件数とマーカーのずれを保存しない。
         self.decode(text)
         return text
 

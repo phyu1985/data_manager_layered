@@ -41,12 +41,9 @@ class JsonlSerializer:
     """
 
     def __init__(
-        self,
-        *,
-        tag_field: str = "type",
+        self, *, tag_field: str = "type",
         model_tags: Mapping[type[BaseModel], str] | None = None,
-        dump_options: JSONLDumpOptions | None = None,
-        load_options: JSONLLoadOptions | None = None,
+        dump_options: JSONLDumpOptions | None = None, load_options: JSONLLoadOptions | None = None,
     ):
         """ tagのキー名・固定名と、形式専用の読み書き設定を保持する。
         """
@@ -75,10 +72,7 @@ class JsonlSerializer:
         # 対応表の構築で未指定の型・重複・衝突を検出する。共有状態へのキャッシュはしない。
         self._build_models_by_tag(model_binding)
 
-    def _build_models_by_tag(
-        self,
-        model_binding: ModelBinding[ModelValue],
-    ) -> dict[str, type[ModelValue]]:
+    def _build_models_by_tag(self, model_binding: ModelBinding[ModelValue]) -> dict[str, type[ModelValue]]:
         """ 型名から許可済みクラスを選ぶための対応表を返す。
         """
         # 固定tagの指定が、Repositoryで許可していないクラスを持ち込まないようにする。
@@ -127,10 +121,7 @@ class JsonlSerializer:
                     )
 
                 if self._tag_field in (field_name, output_name):
-                    raise ConfigurationError(
-                        f"{model_class.__name__}.{field_name}と"
-                        f"tagキー{self._tag_field!r}が衝突します"
-                    )
+                    raise ConfigurationError(f"{model_class.__name__}.{field_name}と" f"tagキー{self._tag_field!r}が衝突します")
 
     def _build_metadata(self, model_binding: ModelBinding[ModelValue]) -> dict[str, Any]:
         """ ファイルの用途を照合するためのメタ情報を作る。
@@ -160,17 +151,9 @@ class JsonlSerializer:
             format_metadata["schema_version"] = 2
             metadata_record["metadata"] = metadata
 
-        return serialize_json_object(
-            metadata_record,
-            ensure_ascii=False,
-            indent=None,
-        ) + "\n"
+        return serialize_json_object(metadata_record, ensure_ascii=False, indent=None) + "\n"
 
-    def validate_metadata_line(
-        self,
-        serialized_text: str,
-        model_binding: ModelBinding[ModelValue],
-    ):
+    def validate_metadata_line(self, serialized_text: str, model_binding: ModelBinding[ModelValue]):
         """ 追記前にも同じ規則で照合し、利用者のメタは既存の行に残す。
         """
         self.deserialize_metadata_line(serialized_text, model_binding)
@@ -205,11 +188,7 @@ class JsonlSerializer:
 
         return cast(dict[str, Any], metadata)
 
-    def serialize_data_lines(
-        self,
-        rows: Sequence[ModelValue],
-        model_binding: ModelBinding[ModelValue],
-    ) -> str:
+    def serialize_data_lines(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
         """ 全件保存・追記に使う、メタ行を含まない本文を返す。
         """
         models_by_tag = self._build_models_by_tag(model_binding)
@@ -220,10 +199,7 @@ class JsonlSerializer:
         serialized_lines: list[str] = []
 
         for row_number, value in enumerate(rows, 1):
-            data = model_binding.to_dict(
-                value,
-                by_alias=self._dump_options.by_alias,
-            )
+            data = model_binding.to_dict(value, by_alias=self._dump_options.by_alias)
 
             # 実際の出力も確認し、計算フィールド等のtagキーを黙って上書きしない。
             if model_binding.data_mode == "mixed":
@@ -235,20 +211,12 @@ class JsonlSerializer:
                     **data,
                 }
 
-            serialized_line = serialize_json_object(
-                data,
-                ensure_ascii=self._dump_options.ensure_ascii,
-                indent=None,
-            )
+            serialized_line = serialize_json_object(data, ensure_ascii=self._dump_options.ensure_ascii, indent=None)
             serialized_lines.append(serialized_line + "\n")
 
         return "".join(serialized_lines)
 
-    def dumps(
-        self,
-        rows: Sequence[ModelValue],
-        model_binding: ModelBinding[ModelValue],
-    ) -> str:
+    def dumps(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
         """ メタ行を含むJSONL全体を、改行付き文字列として返す。
         """
         # 全件置換では古いメタ行も消えるため、ファイルの有無によらず毎回生成する。
@@ -271,11 +239,7 @@ class JsonlSerializer:
             + self.serialize_data_lines(rows, model_binding)
         )
 
-    def deserialize_data_line(
-        self,
-        serialized_text: str,
-        model_binding: ModelBinding[ModelValue],
-    ) -> ModelValue:
+    def deserialize_data_line(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> ModelValue:
         """ 本文1行から、指定型のモデルまたはdictを復元する。
         """
         data = parse_json_object(serialized_text)
@@ -293,11 +257,7 @@ class JsonlSerializer:
         # 許可済みのクラスを選んで検証・生成する。ファイルの型名から任意のクラスは探さない。
         return model_binding.restore_value(data, models_by_tag[tag])
 
-    def loads(
-        self,
-        serialized_text: str,
-        model_binding: ModelBinding[ModelValue],
-    ) -> list[ModelValue]:
+    def loads(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> list[ModelValue]:
         """ 従来の入口では本文だけを返し、load_documentではメタも受け取れる。
         """
         return self.loads_document(serialized_text, model_binding).rows
@@ -327,8 +287,8 @@ class JsonlSerializer:
 
             metadata = self.deserialize_metadata_line(first_line[1], model_binding)
 
+        # 先頭の形式検証を終えたら、本文だけを行単位で復元する。
         restored_values: list[ModelValue] = []
-
         for line_number, line in numbered_lines:
             try:
                 restored_values.append(self.deserialize_data_line(line, model_binding))

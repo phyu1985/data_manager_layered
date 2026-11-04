@@ -145,9 +145,7 @@ class RowsFileService(Generic[ModelValue]):
         self._repository.save(path, rows, overwrite=overwrite)
 
     @overload
-    def load_document(
-        self, *, metadata_model: type[MetadataValue],
-    ) -> RowsDocument[MetadataValue, ModelValue]:
+    def load_document(self, *, metadata_model: type[MetadataValue]) -> RowsDocument[MetadataValue, ModelValue]:
         ...
 
     @overload
@@ -169,9 +167,7 @@ class RowsFileService(Generic[ModelValue]):
     ):
         """ ファイル名を意識せず、メタと本文を一体で保存する。
         """
-        self._repository.save_document(
-            self._path, document, overwrite=overwrite, metadata_by_alias=metadata_by_alias,
-        )
+        self._repository.save_document(self._path, document, overwrite=overwrite, metadata_by_alias=metadata_by_alias)
 
     def append(self, rows: Iterable[ModelValue]):
         """ JSONLへ追記する。CSVなどの未対応形式ではRepositoryのエラーを返す。

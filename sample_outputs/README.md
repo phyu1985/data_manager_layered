@@ -9,3 +9,5 @@ compat/latest_status/example_status.jsonは機械に依存する絶対パスだ�
 metadataはCSVの3種類の境界（blank / marker / fixed）とJSONLを、同一のメタモデル・本文モデルで保存した比較見本です。
 
 extendedは人工の拡張形式の変換・版互換出力・正規化したKV・2表CSVの見本です。保存領域のIDや編集者情報、ガードは含めません。実行手順はdocs/EXTENSION_GUIDE.mdを参照してください。
+
+versioned_filesは版別YAMLテンプレートと保存結果、meta・本文を変換したCSV/JSONL、属性8行のブロックです。yaml/templatesとyaml/dataで、雛形と保存先を分けています。

@@ -60,7 +60,8 @@ from DataManager import ObjectRepository, RowsRepository
 8. [保存領域の初期化・共有編集権・強制引継ぎ](docs/SHARED_EDITING.md)
 9. [CSV・JSONL共通のメタ情報API](docs/METADATA.md)
 10. [各形式の詳しい仕様・オプション・波形の接続](docs/FORMATS.md)
-11. [元の説明資料・構成図・サンプルの一覧](reference/README.md)
+11. [FileService・YAMLテンプレート・meta版変換・属性ブロック](docs/TEMPLATES_AND_VERSIONS.md)
+12. [元の説明資料・構成図・サンプルの一覧](reference/README.md)
 
 ## 検証
 

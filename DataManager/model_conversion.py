@@ -106,11 +106,7 @@ class ModelBinding(Generic[ModelValue]):
         finally:
             ancestor_ids.remove(id(container))
 
-    def restore_value(
-        self,
-        data: dict[str, Any],
-        model_class: type[ModelValue] | None = None,
-    ) -> ModelValue:
+    def restore_value(self, data: dict[str, Any], model_class: type[ModelValue] | None = None) -> ModelValue:
         """ 辞書から、指定された型のモデルまたはdictを復元する。
 
         単一型は復元先を省略できる。混在時は選択済みのクラスを渡す。

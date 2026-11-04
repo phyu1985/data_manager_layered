@@ -107,6 +107,8 @@ class KvSerializer:
             raise ConfigurationError("KV形式は元の文書のマージに対応しません")
         if self._options.header_keys or self._options.header_layout != "values" or self._options.key_value_separator != ":":
             raise ConfigurationError("既存入力用の設定です。標準出力には既定のKvSerializerを指定してください")
+
+        # 階層付きキーへ展開し、値だけをJSON化して型を保つ標準書式へ揃える。
         data = model_binding.to_dict(value, by_alias=self._options.by_alias)
         lines: list[str] = []
         for key, item in flatten_fields(data, separator=self._options.separator).items():
@@ -116,6 +118,7 @@ class KvSerializer:
                 lines.append(f"{key}:{json.dumps(item, ensure_ascii=False, allow_nan=False)}")
             except (ValueError, TypeError) as error:
                 raise SerializationError(f"KVへ保存できません: {error}") from error
+
         return "\n".join(lines) + ("\n" if lines else "")
 
     def loads(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> ModelValue:
@@ -125,6 +128,8 @@ class KvSerializer:
         fields: dict[str, Any] = {}
         header_values: list[str] = []
         in_header = True
+
+        # 先頭のコメント群はヘッダ候補として集め、本文のkey/valueとは分けて読む。
         for line_number, original in enumerate(serialized_text.splitlines(), 1):
             line = original.strip()
             if not line:
@@ -140,6 +145,7 @@ class KvSerializer:
                 raise SerializationError(f"KV行{line_number}: キーが重複しています: {key}")
             fields[key] = value
 
+        # ヘッダの位置またはキー名を使い、本文と同じ辞書へ収録する。
         if options.header_layout == "key_value":
             selected = header_values[options.header_skip:]
             if not selected:
@@ -150,11 +156,13 @@ class KvSerializer:
             if len(selected) != len(options.header_keys):
                 raise SerializationError("ヘッダ項目に対応するコメント値がありません")
             pairs = [(key, parse_text_value(value)) for key, value in zip(options.header_keys, selected)]
+
         for key, value in pairs:
             if key in fields:
                 raise SerializationError(f"ヘッダと本文でキーが重複しています: {key}")
             fields[key] = value
 
+        # 形式由来の配置をここで解消し、モデルには通常の階層辞書を渡す。
         return model_binding.restore_value(unflatten_fields(fields, separator=options.separator))
 
     def _read_pair(self, line: str, location: str) -> tuple[str, Any]:
@@ -170,6 +178,7 @@ class KvSerializer:
             cells = [key, value] if found else []
         if len(cells) != 2 or not cells[0].strip():
             raise SerializationError(f"{location}: キーと値を分割できません")
+
         key, raw = cells
         raw = strip_inline_comment(raw, options.comment_prefixes) if options.inline_comments else raw
         try:

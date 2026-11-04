@@ -150,3 +150,5 @@ with workspace.edit() as presets:
 今回の整理では保存データの文法・業務版・排他方式を変更していません。Pythonの役割分担と呼出側の整理なので、それだけを理由に業務データの版を更新しません。
 
 実行する場合は、プロジェクトのルートで`python -m examples.application_services outputs/file-example`、`python -m examples.metadata outputs/document-example`を使います。既存出力先は上書きせず、新しい保存先を指定してください。
+
+YAMLのテンプレート指定・既存内容・版別出力と、Rowsのmeta変換の接続は[テンプレートと版変換](TEMPLATES_AND_VERSIONS.md)を参照してください。

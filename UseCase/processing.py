@@ -9,13 +9,13 @@ from DataManager.settings_versions import create_settings_repository
 from Domain.models import ProcessingPresets
 
 
-def load_processing_presets(
-    path: Path, raw_values: Sequence[float],
-) -> tuple[ProcessingPresets, dict[str, Any]]:
+def load_processing_presets(path: Path, raw_values: Sequence[float]) -> tuple[ProcessingPresets, dict[str, Any]]:
     """ 設定を現在版で読み、加工に必要な値と維持項目を組み立てる。
     """
+    # 旧版設定を現在モデルで読み、加工用の値と維持項目を分けて受け渡す。
     source = path.resolve()
     document = FileReader(repository=create_settings_repository(source.parent), path=source.name).load()
+
     presets = ProcessingPresets(
         threshold=document.settings.threshold, gain=document.settings.gain, raw_values=list(raw_values),
     )

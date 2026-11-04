@@ -5,9 +5,7 @@ from math import isfinite
 from Domain.models import AnalysisPresets, Measurement, ProcessingPresets
 
 
-def _build_analysis_presets(
-    values: Sequence[float], *, threshold: float, gain: float,
-) -> AnalysisPresets:
+def _build_analysis_presets(values: Sequence[float], *, threshold: float, gain: float) -> AnalysisPresets:
     """ 入力順のIDを付け、解析へ渡す測定一覧を作る。
     """
     return AnalysisPresets(
@@ -23,9 +21,7 @@ def _build_analysis_presets(
 def process_data(presets: ProcessingPresets) -> AnalysisPresets:
     """ 値を補正せず、測定IDを付けて解析用モデルへ移す。
     """
-    return _build_analysis_presets(
-        presets.raw_values, threshold=presets.threshold, gain=presets.gain,
-    )
+    return _build_analysis_presets(presets.raw_values, threshold=presets.threshold, gain=presets.gain)
 
 
 def process_readings(presets: ProcessingPresets) -> AnalysisPresets:
@@ -39,6 +35,7 @@ def process_readings(presets: ProcessingPresets) -> AnalysisPresets:
     if not isfinite(checked.threshold):
         raise ValueError("しきい値は有限値が必要です")
 
+    # 元の値には触れず、先頭値との差分に倍率を掛けた新しい列を作る。
     baseline = checked.raw_values[0]
     values = [(value - baseline) * checked.gain for value in checked.raw_values]
     if any(not isfinite(value) for value in values):
