@@ -11,3 +11,5 @@ metadataはCSVの3種類の境界（blank / marker / fixed）とJSONLを、同�
 extendedは人工の拡張形式の変換・版互換出力・正規化したKV・2表CSVの見本です。保存領域のIDや編集者情報、ガードは含めません。実行手順はdocs/EXTENSION_GUIDE.mdを参照してください。
 
 versioned_filesは版別YAMLテンプレートと保存結果、meta・本文を変換したCSV/JSONL、属性8行のブロックです。yaml/templatesとyaml/dataで、雛形と保存先を分けています。
+
+設定サンプルの現在版はV4です。versioned_files/yaml/data/v3.jsonはTrueへ補完する旧入力、settings.yamlはFalseを保持した現在版、optional_result.txtは残っている生成物の例です。

@@ -2,11 +2,12 @@
 """
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 import csv
 from dataclasses import dataclass
 from io import StringIO
-from typing import Any
+from typing import Any, cast
 
 from pydantic import ValidationError
 
@@ -17,7 +18,7 @@ from DataManager.model_conversion import ModelBinding, ModelValue
 
 @dataclass(frozen=True)
 class BlockRowsOptions:
-    """ ブロックの文法。columnsは同じ行構成の列名を置換し、保存時の見出しにも使う。
+    """ ブロックの文法と対応先。columnsは復元先、row_targetsは所属先、header_columnsは保存見出し。
     """
 
     delimiter: str = ";"
@@ -26,6 +27,8 @@ class BlockRowsOptions:
     columns: tuple[tuple[str, ...], ...] | None = None
     empty_as_none: bool = True
     by_alias: bool = False
+    row_targets: tuple[str | None, ...] | None = None
+    header_columns: tuple[tuple[str, ...], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -119,8 +122,12 @@ class BlockRowsFormat:
         output = StringIO(newline="")
         writer = csv.writer(output, delimiter=options.delimiter, lineterminator="\n")
 
-        # 列定義を先頭に一度だけ出し、以降の全レコードに同じ構成を使う。
-        for group in groups:
+        # 復元先のキーとファイル上の見出しが違う形式も、位置の対応を保って保存する。
+        headers = options.header_columns if options.header_columns is not None else groups
+        self.validate_columns(headers)
+        if [len(group) for group in headers] != [len(group) for group in groups]:
+            raise SerializationError("header_columnsとcolumnsの行・列数が一致しません")
+        for group in headers:
             line = StringIO(newline="")
             csv.writer(line, delimiter=options.delimiter, lineterminator="\n").writerow(group)
             output.write(options.header_prefix + " " + line.getvalue())
@@ -143,12 +150,18 @@ class BlockRowsFormat:
 
 
 class BlockRowsSerializer:
-    """ 複数行を平坦な一件へ対応付け、文法処理はBlockRowsFormatへ委譲する。
+    """ 各行をモデル直下または指定の一覧へまとめ、文法処理はBlockRowsFormatへ委譲する。
     """
 
     def __init__(self, *, options: BlockRowsOptions | None = None):
         self._options = options or BlockRowsOptions()
         self._format = BlockRowsFormat(self._options)
+        if self._options.row_targets is not None:
+            if any(target is not None and (not isinstance(target, str) or not target.strip() or target != target.strip())
+                   for target in list[object](self._options.row_targets)):
+                raise ConfigurationError("row_targetsはNoneまたは空白のない一覧名で指定してください")
+            if self._options.columns is not None and len(self._options.row_targets) != len(self._options.columns):
+                raise ConfigurationError("row_targetsは列定義と同じ行数が必要です")
 
     @property
     def encoding(self) -> str:
@@ -158,30 +171,48 @@ class BlockRowsSerializer:
         if model_binding.data_mode == "mixed":
             raise ConfigurationError("複数行形式は混在モデルに対応しません")
 
-    def _validate_flat_columns(self, groups: Sequence[Sequence[str]]):
-        """ 平坦な辞書へまとめたときに別行の値が上書きされるのを防ぐ。
+    def _row_targets(self, groups: Sequence[Sequence[str]]) -> tuple[str | None, ...]:
+        """ 行と所属先を照合し、同じ辞書へ入るキーの衝突を拒否する。
         """
-        columns = [key for group in groups for key in group]
-        if len(set(columns)) != len(columns):
-            raise SerializationError("平坦なモデルの列名に重複があります。階層を持つ形式は専用Serializerを指定してください")
+        self._format.validate_columns(groups)
+        targets = self._options.row_targets
+        if targets is None:
+            targets = (None,) * len(groups)
+        if len(targets) != len(groups):
+            raise SerializationError("row_targetsと列定義の行数が一致しません")
+
+        root_keys = [key for group, target in zip(groups, targets, strict=True) if target is None for key in group]
+        list_keys = {target for target in targets if target is not None}
+        if len(set(root_keys)) != len(root_keys) or set(root_keys) & list_keys:
+            raise SerializationError("モデル直下の列名または一覧名が重複しています")
+        return targets
 
     def loads_document(
         self, serialized_text: str, model_binding: ModelBinding[ModelValue],
     ) -> RowsDocument[dict[str, Any], ModelValue]:
+        """ 行構成を確認してから所属先の辞書を作り、モデルの型・値を検証する。
+        """
         self.validate_model_configuration(model_binding)
         document = self._format.loads(serialized_text)
-        self._validate_flat_columns(document.columns)
+        targets = self._row_targets(document.columns)
 
-        # 行の境界を外すのはこの段階だけ。キーが一意なことを確認してからまとめる。
+        # Noneの行は直下へ統合し、同じ一覧名の行は入力順で一要素ずつ追加する。
         rows: list[ModelValue] = []
         for record in document.records:
-            values = {
-                key: None if value == "" and self._options.empty_as_none else value
-                for keys, cells in zip(document.columns, record, strict=True)
-                for key, value in zip(keys, cells, strict=True)
-            }
+            data: dict[str, Any] = {}
+            for keys, cells, target in zip(document.columns, record, targets, strict=True):
+                values = {
+                    key: None if value == "" and self._options.empty_as_none else value
+                    for key, value in zip(keys, cells, strict=True)
+                }
+                if target is None:
+                    data.update(values)
+                else:
+                    data.setdefault(target, []).append(values)
+
+            # 入れ子のAttribute等もPydanticに生成させ、Serializerにモデル型を固定しない。
             try:
-                rows.append(model_binding.restore_value(values))
+                rows.append(model_binding.restore_value(data))
             except ValidationError as error:
                 raise SerializationError(f"複数行レコードのモデル検証に失敗しました: {error}") from error
 
@@ -197,22 +228,53 @@ class BlockRowsSerializer:
             raise ConfigurationError("複数行形式の利用者メタ出力は未対応です")
         return self.dumps(rows, model_binding)
 
+    def _list_values(self, values: dict[str, Any], counts: Counter[str]) -> dict[str, list[object]]:
+        """ 一覧の要素数を行定義と照合し、不足や余剰を黙って補正しない。
+        """
+        lists: dict[str, list[object]] = {}
+        for target, count in counts.items():
+            raw: object = values[target]
+            if not isinstance(raw, list):
+                raise SerializationError(f"{target}はリストが必要です")
+            items = cast(list[object], raw)
+            if len(items) != count:
+                raise SerializationError(f"{target}は{count}件必要です")
+            lists[target] = items
+        return lists
+
     def dumps(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
-        """ 一件の辞書を列定義の行へ戻す。階層構造の展開は形式専用Serializerが担当する。
+        """ 直下の値と一覧要素を列定義の順へ展開し、文書全体を生成する。
         """
         self.validate_model_configuration(model_binding)
         groups = self._options.columns
         if groups is None:
             raise ConfigurationError("複数行形式の出力には行ごとのcolumnsが必要です")
-        self._format.validate_columns(groups)
-        self._validate_flat_columns(groups)
-        keys = {key for group in groups for key in group}
-        records: list[list[list[Any]]] = []
+        targets = self._row_targets(groups)
+        counts = Counter(target for target in targets if target is not None)
+        root_keys = {key for group, target in zip(groups, targets, strict=True) if target is None for key in group}
+        expected = root_keys | set(counts)
 
-        # 列定義の順で各モデルを行へ戻し、マーカーやCSV引用は共通処理へ任せる。
+        # 全件の対応付けを終えてから文法処理へ渡し、失敗時はファイルへ触れない。
+        records: list[list[list[Any]]] = []
         for row in rows:
             values = model_binding.to_dict(row, by_alias=self._options.by_alias)
-            if set(values) != keys:
-                raise SerializationError("保存項目が指定された列と一致しません")
-            records.append([[values[key] for key in group] for group in groups])
+            if set(values) != expected:
+                raise SerializationError("保存項目が指定された列・一覧名と一致しません")
+            lists = self._list_values(values, counts)
+            positions = dict.fromkeys(counts, 0)
+            record: list[list[Any]] = []
+            for keys, target in zip(groups, targets, strict=True):
+                if target is None:
+                    source = values
+                else:
+                    item = lists[target][positions[target]]
+                    positions[target] += 1
+                    if not isinstance(item, dict):
+                        raise SerializationError(f"{target}の各要素は辞書またはモデルが必要です")
+                    source = cast(dict[str, Any], item)
+                    if set(source) != set(keys):
+                        raise SerializationError(f"{target}の要素と列定義が一致しません")
+                record.append([source[key] for key in keys])
+            records.append(record)
+
         return self._format.dumps(groups, records)

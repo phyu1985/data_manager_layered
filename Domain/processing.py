@@ -5,12 +5,15 @@ from math import isfinite
 from Domain.models import AnalysisPresets, Measurement, ProcessingPresets
 
 
-def _build_analysis_presets(values: Sequence[float], *, threshold: float, gain: float) -> AnalysisPresets:
+def _build_analysis_presets(
+    values: Sequence[float], *, threshold: float, gain: float, generate_output: bool,
+) -> AnalysisPresets:
     """ 入力順のIDを付け、解析へ渡す測定一覧を作る。
     """
     return AnalysisPresets(
         threshold=threshold,
         gain=gain,
+        generate_output=generate_output,
         measurements=[
             Measurement(measurement_id=str(i), value=value)
             for i, value in enumerate(values)
@@ -21,7 +24,10 @@ def _build_analysis_presets(values: Sequence[float], *, threshold: float, gain: 
 def process_data(presets: ProcessingPresets) -> AnalysisPresets:
     """ 値を補正せず、測定IDを付けて解析用モデルへ移す。
     """
-    return _build_analysis_presets(presets.raw_values, threshold=presets.threshold, gain=presets.gain)
+    return _build_analysis_presets(
+        presets.raw_values, threshold=presets.threshold, gain=presets.gain,
+        generate_output=presets.generate_output,
+    )
 
 
 def process_readings(presets: ProcessingPresets) -> AnalysisPresets:
@@ -42,4 +48,6 @@ def process_readings(presets: ProcessingPresets) -> AnalysisPresets:
         raise ValueError("補正結果を有限値として保持できません")
 
     # 補正済みの値から新しいモデルを作り、入力と出力を共有しない。
-    return _build_analysis_presets(values, threshold=checked.threshold, gain=checked.gain)
+    return _build_analysis_presets(
+        values, threshold=checked.threshold, gain=checked.gain, generate_output=checked.generate_output,
+    )

@@ -36,4 +36,4 @@ DataManager/storage.pyは保存領域の識別・編集権・保存確定時の�
 
 DataManager/services.pyが汎用のFileService / FileReader / FileWriter、repositories.pyがRowsDocumentRepository、versioning.pyがVersionedObjectRepository / VersionedRowsRepositoryです。UseCase/analysis.pyはAnalysisWorkspace、processing.pyは加工入力の組立て、external_updates.pyはExternalUpdaterです。帳票はDataManager/report_repository.pyのReportRepositoryへ移し、report_export.pyは旧名の互換窓口です。詳細は[FILE_INTERFACES.md](FILE_INTERFACES.md)を参照してください。
 
-attribute_blocks.pyは属性行とattrsの対応付け、examples/versioned_files.pyはYAMLの版別テンプレート・metaの版変換・属性行の例です。構成と保存順は[TEMPLATES_AND_VERSIONS.md](TEMPLATES_AND_VERSIONS.md)を参照してください。
+attribute_blocks.pyは旧AttributeBlockSerializerの移行窓口、block_rows.pyはrow_targetsによる直下・一覧への対応付け、examples/versioned_files.pyはYAMLの版別テンプレート・metaの版変換・属性行の例です。構成と保存順は[TEMPLATES_AND_VERSIONS.md](TEMPLATES_AND_VERSIONS.md)を参照してください。

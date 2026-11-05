@@ -22,7 +22,7 @@ repository = create_settings_repository(
     Path("D:/analysis/data"),
     template_directory=Path("C:/application/templates"),
     templates_by_version={
-        3: {".yaml": "settings_v3.yaml"},
+        4: {".yaml": "settings_v4.yaml"},
         2: {".yaml": "legacy/settings_v2.yaml"},
     },
 )
@@ -54,12 +54,12 @@ flowchart TD
     G --> H[アトミック保存・ロック解放]
 ```
 
-| 文書 | 値とキーの扱い |
-|---|---|
-| 通常のObjectRepository | テンプレート→既存文書→モデル値の順で合成。未指定のキーも残る |
+| 文書                      | 値とキーの扱い                                                                             |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| 通常のObjectRepository    | テンプレート→既存文書→モデル値の順で合成。未指定のキーも残る                             |
 | VersionedObjectRepository | encodeとcastが確定した項目・値だけを保存。テンプレート・既存文書から廃止キーを復活させない |
 
-版変換付き保存のテンプレートは、存続するキーのコメント・キー順・引用符に利用します。旧版の必須値や既定値はdowncastで用意します。テンプレートだけに存在する値で、版変換結果の不足を補いません。配列の要素単位のコメント移植や、改名したキーのコメントの自動対応は行いません。
+版変換付き保存のテンプレートは、存続するキーのコメント・キー順・引用符に利用します。旧版の必須値や既定値はdowncastで用意します。テンプレートだけに存在する値で、版変換結果の不足を補いません。配列置換で失われるキー直前の空行と独立した節コメントは、パーサーのキー位置を使って補います。ブロック文字列の末尾の空行は値の一部なので区切りとして補いません。配列の要素単位のコメント移植や、改名したキーのコメントの自動対応は行いません。
 
 existing_textは「今回の保存先の内容」、template_textは「テンプレートの内容」です。どちらもRepositoryが読み、Serializerへ渡します。UseCaseから生の文字列を渡す必要はありません。save_asでは元の読込ファイルではなく別出力先がexisting_textの対象です。
 
@@ -80,22 +80,53 @@ Rowsの文書テンプレート機能は設けていません。CSVの境界・�
 
 ## 属性行を持つブロック
 
-BlockRowsFormatはレコード内の行を保持します。BlockRowsSerializerは平坦なモデル用、AttributeBlockSerializerは「本体4列・属性8行各4列・寸法2列」をattrs付きモデルへ対応付けます。AttributeBlockSerializerの既定の寸法キーはstart_mm/length_mmです。
+BlockRowsFormatは文法と行の境界、BlockRowsSerializerはモデルの対応付けを担当します。平坦な形式とattrsを持つ形式を同じSerializerで扱います。
 
 ```python
+columns = (
+    ("name", "ch", "start", "length"),
+    *(("name", "value", "start", "length"),) * 8,
+    ("start_mm", "length_mm"),
+)
+options = BlockRowsOptions(
+    delimiter=",", columns=columns,
+    row_targets=(None,) + ("attrs",) * 8 + (None,),
+)
 repository = RowsRepository(
-    model=BlockModel,
-    base_directory=Path("data"),
-    serializers_by_extension={".txt": AttributeBlockSerializer()},
+    model=BlockModel, base_directory=Path("data"),
+    serializers_by_extension={".txt": BlockRowsSerializer(options=options)},
 )
 file = FileService(repository=repository, path="blocks.txt")
 models = file.load()
 ```
 
-異なる行のstart/lengthは別の辞書へ入れ、同じ行の重複は拒否します。attrsが8件でない保存は失敗します。別の固定件数はattribute_count、位置を変えずに列名を置換するときはBlockRowsOptions.columnsを指定します。別の行構造には、共通の文法処理へ委譲する専用Serializerを追加します。
+| 設定           | 役割                                                               |
+| -------------- | ------------------------------------------------------------------ |
+| columns        | 各行の値を復元するモデルのキー。指定時は入力の列名を位置で置換する |
+| row_targets    | Noneならモデル直下、名前を指定するとその一覧へ一行ずつ追加する     |
+| header_columns | 保存する見出しを別名にする場合だけ指定する。省略時はcolumnsを使う  |
+
+属性行のstart/lengthは各属性の辞書へ入ります。同じ行の重複、モデル直下のキー同士・一覧名との衝突は拒否します。例ではattrsに対応する行が8本あるため、保存時のattrsも8件を要求します。別の件数や複数の一覧も同じ指定方法で扱えます。途中の属性行を増減して黙って補正することはありません。
+
+ファイル上の見出しがinfo_name1/info_value1でも、columnsをname/valueに置換して復元できます。元の見出し名で保存する場合はheader_columnsにファイル上の列名を指定します。詳細はexamples/versioned_files.pyのblocks_exampleを参照してください。
+
+AttributeBlockSerializerは移行用ファクトリーとして残し、BlockRowsSerializerを構成して返します。新規の呼出と例は統合先へ揃えています。ゼロ件の一覧には対応するデータ行がないため、この旧窓口は1件以上を指定します。データ行を持たない0件の一覧を宣言する機能は現在のrow_targetsにはありません。
+
+## V3以前の作成フラグ
+
+このサンプルの設定はV4です。V3以前は作成制御がなかったため、V3→V4でgenerate_output=Trueを補完します。隣接ファイルが欠けていてもFalseにはしません。V4のFalseは設定読取→加工Presets→解析Presets→保存を通じて維持します。
+
+```text
+旧設定を読む → 隣接版のcastでTrueを補完 → 現在モデルで検証 → Presetsへ渡す
+V4を読む   → 保存されたTrue/Falseを採用 → 現在モデルで検証 → Presetsへ渡す
+```
+
+generate_outputは生成の指示で、生成物の有無とは別の値です。確認用のis_file等はAnalysisFilesのようなアプリ固有の読込担当へ置きます。汎用Repositoryやcastの中へ特定ファイルの探索を持ち込みません。
+
+例ではUseCase相当の処理がoptional_result.txtの作成を判断します。実業務ではその生成対象を置き換えてください。V3/V2へのdowncastはこのフラグを除外するため、旧システム側は従来どおり常に作成します。
 
 ## 実行例
 
-`python -m examples.versioned_files outputs/versioned-files`で、別置きの版別YAMLテンプレート、CSVとJSONLをまたぐmeta・本文の双方向変換、属性8行の保存と再読を確認できます。出力見本はsample_outputs/versioned_filesです。
+`python -m examples.versioned_files outputs/versioned-files`で、別置きの版別YAMLテンプレート、CSVとJSONLをまたぐmeta・本文の双方向変換、属性8行の保存と再読、V3からのTrue補完とV4のFalse保持を確認できます。出力見本はsample_outputs/versioned_filesです。
 
 PositionalCaptureReaderはPositionalCaptureSerializerへ改名しました。位置から旧キーを付ける読取専用の架空例で、実業務の形式は対応付けを置き換えてください。

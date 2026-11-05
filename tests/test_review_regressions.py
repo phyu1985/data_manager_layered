@@ -66,7 +66,7 @@ def test_yaml_recursive_aliases_are_not_replaced_with_none(text):
         YamlSerializer().loads(text, ModelBinding(dict))
 
 
-def test_yaml_shared_aliases_still_work_and_scalars_are_plain_types():
+def test_yaml_roundtrip_preserves_aliases_scalar_values_and_mapping_boundaries():
     values = YamlSerializer().loads(
         'flag: &flag true\nother: *flag\ntext: &text "name"\ncopy: *text\n'
         'mapping: &mapping {count: 1}\nshared: *mapping\n',
@@ -84,6 +84,24 @@ def test_yaml_shared_aliases_still_work_and_scalars_are_plain_types():
         template_text="first: &shared {x: 0, y: 0}\nsecond: *shared\n",
     )
     assert serializer.loads(text, ModelBinding(dict)) == expected
+    template = "first: 1\n\nitems:\n  - name: old\n    value: 2\n\nlast: 3\n"
+    expected = {"first": 10, "items": [{"name": "new", "value": 20}], "last": 30}
+    for dump in (serializer.dumps, serializer.dumps_exact):
+        text = dump(expected, ModelBinding(dict), template_text=template)
+        assert text.count("\n\n") == 2
+        assert serializer.loads(text, ModelBinding(dict)) == expected
+        assert dump(expected, ModelBinding(dict), template_text=template, existing_text=text) == text
+    template = "first: 1\nitems:\n  - value: 2\n\n# Next section\nlast: 3\n"
+    expected = {"first": 10, "items": [{"value": 20}], "last": 30}
+    text = serializer.dumps_exact(expected, ModelBinding(dict), template_text=template)
+    assert "\n\n# Next section\nlast:" in text
+    assert serializer.loads(text, ModelBinding(dict)) == expected
+    for indicator in ["|", "|+", "|-", ">", ">+"]:
+        template = "text: " + indicator + "\n  old\n\nafter: 1\n"
+        expected = {"text": "line\n\n", "after": 2}
+        for dump in (serializer.dumps, serializer.dumps_exact):
+            text = dump(expected, ModelBinding(dict), template_text=template)
+            assert serializer.loads(text, ModelBinding(dict)) == expected
 
 
 def test_yaml_rejects_cyclic_existing_document_without_overwriting(tmp_path):

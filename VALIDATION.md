@@ -1,6 +1,6 @@
 # 配布物の検証と残る範囲
 
-2026-11-04。Windows / Python 3.12.14で確認しました。
+2026-11-05。Windows / Python 3.12.14で確認しました。
 
 | 確認 | 結果 |
 |---|---|
@@ -11,12 +11,12 @@
 | 自作パッケージなしの起動 | コピー先で旧モジュールを拒否し、PYTHONPATHなしで成功 |
 | 起動入口 | main.py / python -m View.end_to_end の両方で成功 |
 | 実行例 | 全工程3形式・各形式・用途別services・旧版保存/外部更新・Excelコード/テンプレートを実行 |
-| YAML・meta・属性ブロック | 版別雛形、廃止キー除外、コメント保持、metaと本文の双方向変換、属性8行を既存ケースと実行例で確認 |
+| YAML・meta・ブロック | 版別雛形、配列置換後の空行・文字列値の保持、metaと本文の双方向変換、row_targetsによる属性8行を確認 |
 | 計算と反映の分離 | 入力不変・明示反映・再補正なし・古い結果の拒否を既存ケースで確認 |
 | レイヤ境界 | 絶対import、参照方向、計算層での表示禁止を確認 |
 | コーディング規約 | 現4レイヤ・実行例・検証ツールのdocstring書式とNone戻り値表記をASTで確認 |
 
-解析関数はAnalysisResultを返し、集計はresult.summaryで取得します。従来の「計算と同時に並び替え」から、UseCaseのapply_analysis_resultで反映する操作へ変更しました。ファイル形式や保存版は変更していません。
+解析関数はAnalysisResultを返し、集計はresult.summaryで取得します。従来の「計算と同時に並び替え」から、UseCaseのapply_analysis_resultで反映する操作へ変更しました。その時点の変更ではファイル形式や保存版は変更していません。設定サンプルは今回V4へ進め、V3以前のgenerate_output=True補完とV4のFalse保持を既存ケースでも確認しています。
 
 通常の型チェックは4レイヤ・main.py・examples・tools・正例の型確認コードです。Domain/UseCase/View、汎用DataManager、Excelアダプターはstrict、既存Excelエンジンと単体例・ツールはbasicです。すべてをstrict検証済みとは扱いません。
 

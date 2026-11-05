@@ -18,5 +18,6 @@ def load_processing_presets(path: Path, raw_values: Sequence[float]) -> tuple[Pr
 
     presets = ProcessingPresets(
         threshold=document.settings.threshold, gain=document.settings.gain, raw_values=list(raw_values),
+        generate_output=document.settings.generate_output,
     )
     return presets, dict(document.retained_values)

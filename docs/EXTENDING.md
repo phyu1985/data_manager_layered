@@ -4,7 +4,7 @@
 
 処理用のSettings/Presetsは現在の意味を表し、V2Presets・V3Presetsのように版ごとに増やしません。外部辞書を隣接版のupcastで現在版へ変換し、現在のモデルを検証します。旧版保存は現在の保存辞書からdowncastを逆順に適用します。版がないものはV0です。
 
-具体例はDataManager/settings_versions.pyとexamples/workflow.pyです。サンプルはV0→V1→V2→V3とV3→V2を実装しています。V4/V5/V6の実業務仕様が実装済みという意味ではありません。
+具体例はDataManager/settings_versions.pyとexamples/workflow.pyです。サンプルはV0→V1→V2→V3→V4とV4→V3→V2を実装しています。V3以前の作成フラグはTrueへ補完し、V4に保存されたFalseは維持します。V4/V5/V6の実業務仕様が実装済みという意味ではありません。
 
 ```mermaid
 flowchart LR

@@ -48,6 +48,18 @@ def upcast_v2_to_v3(value: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def upcast_v3_to_v4(value: dict[str, Any]) -> dict[str, Any]:
+    """ 作成制御がなかったV3は常に作成扱いにする。生成物の有無では判断しない。
+    """
+    return {**value, "generate_output": True}
+
+
+def downcast_v4_to_v3(value: dict[str, Any]) -> dict[str, Any]:
+    """ 旧版が理解できない作成フラグを除く。V3での動作は常に作成となる。
+    """
+    return {key: item for key, item in value.items() if key != "generate_output"}
+
+
 def downcast_v3_to_v2(value: dict[str, Any]) -> dict[str, Any]:
     """ V2の項目だけを出し、V3のgainと廃止したdraft_flagは出さない。
     """
@@ -73,6 +85,7 @@ def decode_settings(value: dict[str, Any]) -> SettingsDocument:
     return SettingsDocument(
         settings=Settings.model_validate({
             "threshold": value["threshold"], "gain": value.get("gain", 1.0),
+            "generate_output": value.get("generate_output", True),
         }),
         retained_values=dict(retained_values),
     )
@@ -87,7 +100,7 @@ def encode_settings(document: SettingsDocument) -> dict[str, Any]:
         raise ValueError("維持対象でない項目が含まれています")
 
     return {
-        "version": 3,
+        "version": 4,
         **settings.model_dump(mode="json"),
         "retained_values": dict(document.retained_values),
     }
@@ -106,9 +119,9 @@ def create_settings_repository(
             template_directory=template_directory,
         ),
         converter=VersionConverter(
-            current_version=3,
-            upcasts={0: upcast_v0_to_v1, 1: upcast_v1_to_v2, 2: upcast_v2_to_v3},
-            downcasts={3: downcast_v3_to_v2},
+            current_version=4,
+            upcasts={0: upcast_v0_to_v1, 1: upcast_v1_to_v2, 2: upcast_v2_to_v3, 3: upcast_v3_to_v4},
+            downcasts={4: downcast_v4_to_v3, 3: downcast_v3_to_v2},
         ),
         decode_current=decode_settings,
         encode_current=encode_settings,

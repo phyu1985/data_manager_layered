@@ -68,6 +68,7 @@ class AnalysisFiles:
         # どの設定値を解析で使うかをここで列挙し、各解析メソッドへ分散させない。
         presets = AnalysisPresets(
             threshold=settings.threshold, gain=settings.gain, measurements=measurements,
+            generate_output=settings.generate_output,
         )
         return AnalysisDocument(presets, dict(document.retained_values))
 
@@ -76,7 +77,9 @@ class AnalysisFiles:
         """ 処理用Presetsから保存する設定だけを明示し、対応付けを一か所へ置く。
         """
         return SettingsDocument(
-            settings=Settings(threshold=presets.threshold, gain=presets.gain),
+            settings=Settings(
+                threshold=presets.threshold, gain=presets.gain, generate_output=presets.generate_output,
+            ),
             retained_values=dict(retained_values),
         )
 

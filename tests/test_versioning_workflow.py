@@ -80,6 +80,8 @@ def test_retained_and_discarded_fields_survive_restart_as_intended(tmp_path: Pat
     first_service = create_settings_repository(tmp_path)
     document = first_service.load("old.json")
     document.settings.threshold = 8.0
+    assert document.settings.generate_output is True
+    document.settings.generate_output = False
     first_service.save(f"latest.{extension}", document)
 
     # サービスを作り直しても、元ファイルなしで維持対象だけが引き継がれる。
@@ -87,6 +89,7 @@ def test_retained_and_discarded_fields_survive_restart_as_intended(tmp_path: Pat
     (tmp_path / "old.json").unlink()
     second_service = create_settings_repository(tmp_path)
     restored = second_service.load(f"latest.{extension}")
+    assert restored.settings.generate_output is False
     restored.settings.gain = 2.0
     second_service.save("export.json", restored, target_version=2)
 
@@ -101,16 +104,16 @@ def test_yaml_versioned_overwrite_does_not_resurrect_removed_keys(tmp_path: Path
     )
     templates = tmp_path / "templates"
     templates.mkdir()
-    template = templates / "v3.yaml"
+    template = templates / "v4.yaml"
     template.write_text(
-        "version: 3\nthreshold: 0  # decision-level\ngain: 1\n"
+        "version: 4\nthreshold: 0  # decision-level\ngain: 1\n"
         "template_only: discard\nretained_values: {removed: discard}\n", encoding="utf-8",
     )
     (templates / "v2.yaml").write_text("# Legacy layout\nversion: 2\nthreashold: 0\ngain: 99\n", encoding="utf-8")
     original_template = template.read_bytes()
     repository = create_settings_repository(
         tmp_path, template_directory=templates,
-        templates_by_version={3: {".yaml": "v3.yaml"}, 2: {".yaml": "v2.yaml"}},
+        templates_by_version={4: {".yaml": "v4.yaml"}, 2: {".yaml": "v2.yaml"}},
     )
     file = FileService(repository=repository, path="settings.yaml")
     document = file.load()
@@ -121,6 +124,10 @@ def test_yaml_versioned_overwrite_does_not_resurrect_removed_keys(tmp_path: Path
     assert all(comment in text for comment in ["Existing settings", "file-version", "decision-level"])
     assert all(key not in text for key in ["draft_flag", "template_only", "removed"])
     assert template.read_bytes() == original_template
+    assert file.load().settings.generate_output is True
+    document.settings.generate_output = False
+    file.save(document, overwrite=True)
+    assert file.load().settings.generate_output is False
 
     legacy = FileService(repository=repository.for_version(2), path="legacy.yaml")
     legacy.save(document)
@@ -166,10 +173,13 @@ def test_flat_presets_api_preserves_legacy_values_without_exposing_edit_metadata
     # 再生成したサービスでも、Presetsだけを編集して旧版へ戻せる。
     analysis = AnalysisWorkspace(tmp_path / "analysis")
     with analysis.edit() as presets:
+        assert presets.generate_output is True
         presets.threshold = 8
+        presets.generate_output = False
         analysis.save_settings(presets, overwrite=True)
         analysis.export_settings("export.json", presets, target_version=2)
 
+    assert analysis.load().generate_output is False
     exported = ObjectRepository(model=dict, base_directory=analysis.directory).load("export.json")
     assert exported == {"version": 2, "threashold": 8, "operator_note": "keep"}
 

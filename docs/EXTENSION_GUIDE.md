@@ -1,6 +1,6 @@
 # 拡張形式・版互換・共有編集権をつなぐ
 
-この改修は、2026-11-04までの合意を反映しています。KV・独自テキストの元の説明コメントや配置の保持は対象外です。未提示の入力文法は人工データで具体化してあり、社内ファイルの実仕様を実装済みという意味ではありません。
+この改修は、2026-11-05までの合意を反映しています。KV・独自テキストの元の説明コメントや配置の保持は対象外です。未提示の入力文法は人工データで具体化してあり、社内ファイルの実仕様を実装済みという意味ではありません。
 
 ## どこに処理を足すか
 
@@ -76,7 +76,7 @@ reader = KvSerializer(options=KvOptions(
 
 キーなし空白区切りの架空例はPositionalCaptureSerializerです。構造を辞書へ戻す読取専用の例で、標準KV/JSONへ出す場合は別の出力Repositoryを使います。
 
-属性行の同名キーをattrsへまとめる形式はAttributeBlockSerializerを使います。共通のBlockRowsFormatは行を保持し、平坦なBlockRowsSerializerへ同名列を通して上書きすることはありません。[属性ブロックと版変換の例](TEMPLATES_AND_VERSIONS.md)を参照してください。
+属性行の同名キーをattrsへまとめる形式もBlockRowsSerializerを使います。row_targetsで各行の所属先を指定し、columnsで復元先のキー名を与えます。[属性ブロックと版変換の例](TEMPLATES_AND_VERSIONS.md)を参照してください。
 
 ## Rowsの版変換
 

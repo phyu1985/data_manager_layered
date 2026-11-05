@@ -151,6 +151,24 @@ class YamlSerializer:
             return value
         raise SerializationError(f"通常のYAML値として扱えない型です: {type(value).__name__}")
 
+    def _trim_block_scalar_padding(self, document: Any, key: str, value: object):
+        """ 保持する末尾改行と書式の空行が重なり、文字列の値が増えるのを防ぐ。
+        """
+        if (
+            getattr(document.get(key), "style", None) not in ("|", ">")
+            or not isinstance(value, str) or not value.endswith("\n\n")
+        ):
+            return
+        comments = document.ca.items.get(key)
+        if comments is None or comments[2] is None:
+            return
+        token = comments[2]
+        trimmed = token.value.lstrip("\r\n")
+        if trimmed.strip():
+            token.value = trimmed
+        else:
+            comments[2] = None
+
     def _merge_document(self, destination: dict[str, Any], source: dict[str, Any], *, copy_comments: bool):
         """ マッピングを再帰的に重ね、配列と単一値は全体を置き換える。
         """
@@ -173,6 +191,7 @@ class YamlSerializer:
                     destination[field_name], cast(dict[str, Any], field_value), copy_comments=copy_comments,
                 )
             else:
+                self._trim_block_scalar_padding(destination_node, field_name, field_value)
                 destination[field_name] = deepcopy(field_value)
 
             if copy_comments and field_name in source_node.ca.items:
@@ -207,14 +226,92 @@ class YamlSerializer:
                 document[key] = child
                 self._keep_output_fields(document[key], values[key])
 
+    def _ends_with_block_scalar(self, value: object) -> bool:
+        """ ブロック文字列末尾の空行は値の一部なので、項目間の区切りと混同しない。
+        """
+        if isinstance(value, dict):
+            mapping = cast(dict[str, Any], value)
+            return bool(mapping) and self._ends_with_block_scalar(list(mapping.values())[-1])
+        if isinstance(value, list):
+            items = cast(list[object], value)
+            return bool(items) and self._ends_with_block_scalar(items[-1])
+        return getattr(value, "style", None) in ("|", ">")
+
+    def _mapping_prefixes(
+        self, document: dict[str, Any], lines: list[str], parent: tuple[str, ...] = (),
+    ) -> dict[tuple[str, ...], tuple[int, list[str]]]:
+        """ キー直前の空行と独立したコメントを、モデルの値から分けて記録する。
+        """
+        node: Any = document
+        if node.fa.flow_style():
+            return {}
+        prefixes: dict[tuple[str, ...], tuple[int, list[str]]] = {}
+        previous: object = None
+        for key, value in document.items():
+            path = (*parent, key)
+            location = node.lc.key(key)
+            if location is not None and not self._ends_with_block_scalar(previous):
+                line, column = int(location[0]), int(location[1])
+                start = line
+                while start > 0:
+                    candidate = lines[start - 1]
+                    indent = len(candidate) - len(candidate.lstrip())
+                    if candidate.strip() and not (candidate.lstrip().startswith("#") and indent <= column):
+                        break
+                    start -= 1
+                prefixes[path] = (line, [item.rstrip("\r\n") + "\n" for item in lines[start:line]])
+            if isinstance(value, dict):
+                prefixes.update(self._mapping_prefixes(cast(dict[str, Any], value), lines, path))
+            previous = cast(object, value)
+        return prefixes
+
+    def _restore_mapping_prefixes(self, text: str, desired: dict[tuple[str, ...], list[str]]) -> str:
+        """ 配列置換で失う節の区切りを戻す。文字列と配列要素内の配置には触れない。
+        """
+        if not desired:
+            return text
+        lines = text.splitlines(keepends=True)
+        actual = self._mapping_prefixes(self._load_document(text), lines)
+        replacements: dict[tuple[int, int], list[str]] = {}
+        for path, prefix in desired.items():
+            if path not in actual:
+                continue
+            line, existing = actual[path]
+            old_comments = [item.strip() for item in existing if item.strip()]
+            new_comments = [item.strip() for item in prefix if item.strip()]
+            if old_comments == new_comments or not old_comments:
+                replacement = prefix
+            elif not new_comments:
+                # テンプレートの空行だけを戻す場合も、既存の独立コメントは残す。
+                first_comment = next(i for i, item in enumerate(existing) if item.strip())
+                replacement = prefix + existing[first_comment:]
+            else:
+                missing = [item for item in prefix if item.strip() and item.strip() not in old_comments]
+                replacement = existing + missing
+            replacements[(line - len(existing), line)] = replacement
+
+        # パーサーが示したキー境界だけを書き換え、値中の改行や#を区切りと誤認しない。
+        for (start, end), replacement in sorted(replacements.items(), reverse=True):
+            lines[start:end] = replacement
+        return "".join(lines)
+
     def _dump_document(
         self, value: ModelValue, model_binding: ModelBinding[ModelValue],
         existing_text: str | None, template_text: str | None, *, exact_fields: bool,
     ) -> str:
         # まず書式の土台を作る。既存文書のコメントをテンプレートより優先する。
         document = self._load_document(template_text or "")
+        prefixes = {
+            path: prefix for path, (_, prefix) in self._mapping_prefixes(document, (template_text or "").splitlines(keepends=True)).items()
+            if prefix
+        }
         if existing_text is not None:
-            self._merge_document(document, self._load_document(existing_text), copy_comments=True)
+            existing = self._load_document(existing_text)
+            prefixes.update({
+                path: prefix for path, (_, prefix) in self._mapping_prefixes(existing, existing_text.splitlines(keepends=True)).items()
+                if prefix
+            })
+            self._merge_document(document, existing, copy_comments=True)
 
         data = model_binding.to_dict(value, by_alias=self._dump_options.by_alias)
         self._to_plain_value(data, set())
@@ -231,7 +328,8 @@ class YamlSerializer:
         except YAMLError as error:
             raise SerializationError(f"YAMLへ変換できません: {error}") from error
 
-        return output.getvalue()
+        # 空行は配列の末尾要素に保持される場合があるため、値の置換後に区切りを戻す。
+        return self._restore_mapping_prefixes(output.getvalue(), prefixes)
 
     def loads(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> ModelValue:
         """ YAMLの値から、指定型のモデルまたは通常のdictを復元する。

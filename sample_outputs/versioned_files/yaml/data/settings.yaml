@@ -1,5 +1,6 @@
 # Current settings
-version: 3
+version: 4
 threshold: 20.0 # Decision level
 gain: 2.0
+generate_output: false
 retained_values: {}

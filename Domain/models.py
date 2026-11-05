@@ -10,6 +10,7 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     threshold: float
     gain: float = 1.0
+    generate_output: bool = True
 
 
 class Measurement(BaseModel):
@@ -27,6 +28,7 @@ class ProcessingPresets(BaseModel):
     threshold: float
     gain: float
     raw_values: list[float]
+    generate_output: bool = True
 
 
 class AnalysisPresets(BaseModel):
@@ -36,3 +38,4 @@ class AnalysisPresets(BaseModel):
     threshold: float
     gain: float
     measurements: list[Measurement]
+    generate_output: bool = True

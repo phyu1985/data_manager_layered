@@ -70,6 +70,8 @@
 
 - テンプレートは現在YAMLだけを対象とする。保存先と別の固定ディレクトリから読む。
 - 版変換後の出力辞書を正本とし、既存文書やテンプレートから廃止キーを復活させない。metaと本文は一文書としてcastする。
-- ブロックの文法はBlockRowsFormat、平坦な対応付けはBlockRowsSerializer、属性行の対応付けはAttributeBlockSerializerへ分ける。
+- ブロックの文法はBlockRowsFormat、モデルへの対応付けはBlockRowsSerializerへ揃える。row_targetsで各行の所属先、columnsで復元先のキーを指定する。
 
 - 可読性調整の説明コメントは主要なコアコードへ置く。examples・testsへ説明コメントを増やさない。
+
+- サンプルV3以前の生成指示はV4へのcastでTrueへ補完する。V4の明示値を隣接ファイルの有無で上書きしない。

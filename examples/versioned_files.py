@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
-    AttributeBlockSerializer, BlockRowsOptions, CsvOptions, CsvSerializer, FileService,
+    BlockRowsSerializer, BlockRowsOptions, CsvOptions, CsvSerializer, FileService,
     JsonlSerializer, ObjectRepository, RowsDocument, RowsRepository, VersionConverter, VersionedRowsRepository,
 )
 from DataManager.settings_versions import SettingsDocument, create_settings_repository
@@ -75,8 +75,8 @@ def yaml_example(directory: Path):
     """
     templates = directory / "templates"
     templates.mkdir(parents=True)
-    (templates / "v3.yaml").write_text(
-        "# Current settings\nversion: 3\nthreshold: 0  # Decision level\ngain: 1\nretained_values: {}\n",
+    (templates / "v4.yaml").write_text(
+        "# Current settings\nversion: 4\nthreshold: 0  # Decision level\ngain: 1\ngenerate_output: true\nretained_values: {}\n",
         encoding="utf-8",
     )
     (templates / "v2.yaml").write_text(
@@ -85,10 +85,10 @@ def yaml_example(directory: Path):
     )
     repository = create_settings_repository(
         directory / "data", template_directory=templates,
-        templates_by_version={3: {".yaml": "v3.yaml"}, 2: {".yaml": "v2.yaml"}},
+        templates_by_version={4: {".yaml": "v4.yaml"}, 2: {".yaml": "v2.yaml"}},
     )
     current = FileService(repository=repository, path="settings.yaml")
-    document = SettingsDocument(Settings(threshold=15, gain=2), {})
+    document = SettingsDocument(Settings(threshold=15, gain=2, generate_output=False), {})
     current.save(document)
     document.settings.threshold = 20
     current.save(document, overwrite=True)
@@ -100,6 +100,18 @@ def yaml_example(directory: Path):
     assert raw == {"version": 2, "threashold": 20}
     # 同じRepositoryのJSON出力に、YAMLテンプレートは適用しない。
     current.save_as("settings.json", document)
+    assert current.load().settings.generate_output is False
+    raw_repository = ObjectRepository(model=dict, base_directory=directory / "data")
+    raw_repository.save("v3.json", {"version": 3, "threshold": 20, "gain": 2})
+    assert repository.load("v3.json").settings.generate_output is True
+    artifact = directory / "data/optional_result.txt"
+    assert not artifact.exists()
+    if current.load().settings.generate_output:
+        artifact.write_text("generated", encoding="utf-8")
+    assert not artifact.exists()
+    artifact.write_text("previous result", encoding="utf-8")
+    assert current.load().settings.generate_output is False
+    assert repository.load("v3.json").settings.generate_output is True
 
 
 def rows_example(directory: Path):
@@ -140,10 +152,18 @@ def blocks_example(directory: Path):
     # このモデルではaxis_mmを使う。columnsで保存先のキー名を明示できる。
     columns = (
         ("name", "ch", "start", "length"),
-        *((f"info_name{i + 1}", f"info_value{i + 1}", "start", "length") for i in range(8)),
+        *(("name", "value", "start", "length"),) * 8,
         ("axis_mm", "length_mm"),
     )
-    serializer = AttributeBlockSerializer(options=BlockRowsOptions(delimiter=",", columns=columns))
+    header_columns = (
+        columns[0],
+        *((f"info_name{i + 1}", f"info_value{i + 1}", "start", "length") for i in range(8)),
+        columns[-1],
+    )
+    serializer = BlockRowsSerializer(options=BlockRowsOptions(
+        delimiter=",", columns=columns, header_columns=header_columns,
+        row_targets=(None,) + ("attrs",) * 8 + (None,),
+    ))
     repository = RowsRepository(
         model=BlockModel, base_directory=directory, serializers_by_extension={".txt": serializer},
     )

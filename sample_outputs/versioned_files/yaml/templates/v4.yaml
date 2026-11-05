@@ -1,5 +1,6 @@
 # Current settings
-version: 3
+version: 4
 threshold: 0  # Decision level
 gain: 1
+generate_output: true
 retained_values: {}
