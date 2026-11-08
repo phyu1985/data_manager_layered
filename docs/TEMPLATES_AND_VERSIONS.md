@@ -130,3 +130,6 @@ generate_outputは生成の指示で、生成物の有無とは別の値です�
 `python -m examples.versioned_files outputs/versioned-files`で、別置きの版別YAMLテンプレート、CSVとJSONLをまたぐmeta・本文の双方向変換、属性8行の保存と再読、V3からのTrue補完とV4のFalse保持を確認できます。出力見本はsample_outputs/versioned_filesです。
 
 PositionalCaptureReaderはPositionalCaptureSerializerへ改名しました。位置から旧キーを付ける読取専用の架空例で、実業務の形式は対応付けを置き換えてください。
+
+
+追加ヘッダ・半角スペース区切り・modelsの設定と単独の版変換例は、[ヘッダと版変換の実行例](HEADERS_AND_SAMPLES.md)を参照してください。

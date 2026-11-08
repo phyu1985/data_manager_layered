@@ -1,0 +1,8 @@
+# Settings template
+version: 4
+threshold: 15.0 # Decision level
+gain: 1.0
+generate_output: false
+
+retained_values:
+  operator_note: keep

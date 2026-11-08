@@ -128,6 +128,11 @@ def test_yaml_versioned_overwrite_does_not_resurrect_removed_keys(tmp_path: Path
     document.settings.generate_output = False
     file.save(document, overwrite=True)
     assert file.load().settings.generate_output is False
+    text = target.read_text(encoding="utf-8")
+    assert "\n\nretained_values:" in text
+    assert list(ObjectRepository(model=dict, base_directory=tmp_path).load("settings.yaml"))[-1] == "retained_values"
+    file.save(document, overwrite=True)
+    assert target.read_text(encoding="utf-8") == text
 
     legacy = FileService(repository=repository.for_version(2), path="legacy.yaml")
     legacy.save(document)

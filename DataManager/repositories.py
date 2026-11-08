@@ -96,6 +96,15 @@ class RowsDocumentSerializer(Protocol):
         ...
 
 
+def default_object_serializers() -> dict[str, ObjectSerializer]:
+    """ 標準の対応表を新しく作る。用途別の構成もここから必要な形式だけ差し替える。
+    """
+    return {
+        ".json": JsonSerializer(), ".yaml": YamlSerializer(),
+        ".yml": YamlSerializer(), ".txt": KvSerializer(),
+    }
+
+
 class ObjectRepository(Generic[ModelValue]):
     """ パスと拡張子でSerializerを選び、指定型の単一値を読み書きする。
 
@@ -129,12 +138,7 @@ class ObjectRepository(Generic[ModelValue]):
         self._serializers_by_extension: dict[str, ObjectSerializer] = (
             dict(serializers_by_extension)
             if serializers_by_extension is not None
-            else {
-                ".json": JsonSerializer(),
-                ".yaml": YamlSerializer(),
-                ".yml": YamlSerializer(),
-                ".txt": KvSerializer(),
-            }
+            else default_object_serializers()
         )
 
     def _resolve_path_and_serializer(self, path: str | Path) -> tuple[Path, ObjectSerializer]:

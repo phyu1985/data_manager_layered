@@ -14,11 +14,15 @@ from pydantic import ValidationError
 from DataManager.documents import RowsDocument
 from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.model_conversion import ModelBinding, ModelValue
+from DataManager.serializers.text_header import dump_header, parse_header_line, validate_header_separator
 
 
 @dataclass(frozen=True)
 class BlockRowsOptions:
     """ ブロックの文法と対応先。columnsは復元先、row_targetsは所属先、header_columnsは保存見出し。
+
+    metadata_markerを指定すると、その行の手前をファイル全体のmetaとして読む。
+    metaのkey/value区切りと接頭辞はmetadata_separator / metadata_prefixで指定する。
     """
 
     delimiter: str = ";"
@@ -29,6 +33,10 @@ class BlockRowsOptions:
     by_alias: bool = False
     row_targets: tuple[str | None, ...] | None = None
     header_columns: tuple[tuple[str, ...], ...] | None = None
+    metadata_marker: str | None = None
+    metadata_separator: str = ":"
+    metadata_prefix: str = ""
+    metadata_multiple: bool = False
 
 
 @dataclass(frozen=True)
@@ -102,10 +110,10 @@ class BlockRowsFormat:
                 if in_header:
                     if not line.startswith(options.header_prefix):
                         raise SerializationError(f"行{i}: 列定義の開始記号がありません")
-                    cells = next(csv.reader([line[len(options.header_prefix):].lstrip()], delimiter=options.delimiter, strict=True))
+                    cells = next(csv.reader([line[len(options.header_prefix):].lstrip()], delimiter=options.delimiter, skipinitialspace=options.delimiter == " ", strict=True))
                     groups.append([cell.strip() for cell in cells])
                 else:
-                    current.append(next(csv.reader([line], delimiter=options.delimiter, strict=True)))
+                    current.append(next(csv.reader([line], delimiter=options.delimiter, skipinitialspace=options.delimiter == " ", strict=True)))
         except csv.Error as error:
             raise SerializationError(f"複数行形式のCSVセルが不正です: {error}") from error
 
@@ -120,7 +128,7 @@ class BlockRowsFormat:
         self.validate_columns(groups)
         options = self._options
         output = StringIO(newline="")
-        writer = csv.writer(output, delimiter=options.delimiter, lineterminator="\n")
+        writer = csv.writer(output, delimiter=options.delimiter, lineterminator="\n", quoting=csv.QUOTE_ALL if options.delimiter == " " else csv.QUOTE_MINIMAL)
 
         # 復元先のキーとファイル上の見出しが違う形式も、位置の対応を保って保存する。
         headers = options.header_columns if options.header_columns is not None else groups
@@ -129,7 +137,7 @@ class BlockRowsFormat:
             raise SerializationError("header_columnsとcolumnsの行・列数が一致しません")
         for group in headers:
             line = StringIO(newline="")
-            csv.writer(line, delimiter=options.delimiter, lineterminator="\n").writerow(group)
+            csv.writer(line, delimiter=options.delimiter, lineterminator="\n", quoting=csv.QUOTE_ALL if options.delimiter == " " else csv.QUOTE_MINIMAL).writerow(group)
             output.write(options.header_prefix + " " + line.getvalue())
         output.write(options.marker + "\n")
 
@@ -156,6 +164,12 @@ class BlockRowsSerializer:
     def __init__(self, *, options: BlockRowsOptions | None = None):
         self._options = options or BlockRowsOptions()
         self._format = BlockRowsFormat(self._options)
+        if self._options.metadata_marker is not None:
+            if not self._options.metadata_marker.strip() or any(c in self._options.metadata_marker for c in "\r\n"):
+                raise ConfigurationError("metadata_markerは改行のない非空文字列です")
+            validate_header_separator(self._options.metadata_separator)
+        if any(c in self._options.metadata_prefix for c in "\r\n"):
+            raise ConfigurationError("metadata_prefixに改行は使えません")
         if self._options.row_targets is not None:
             if any(target is not None and (not isinstance(target, str) or not target.strip() or target != target.strip())
                    for target in list[object](self._options.row_targets)):
@@ -193,6 +207,25 @@ class BlockRowsSerializer:
         """ 行構成を確認してから所属先の辞書を作り、モデルの型・値を検証する。
         """
         self.validate_model_configuration(model_binding)
+        metadata: dict[str, Any] = {}
+        if self._options.metadata_marker is not None:
+            # metaの終端を明示し、同じ#で始まる列定義と混同しない。
+            lines = StringIO(serialized_text, newline="").readlines()
+            for i, line in enumerate(lines):
+                if line.strip() == self._options.metadata_marker:
+                    serialized_text = "".join(lines[i + 1:])
+                    break
+                if not line.startswith(self._options.metadata_prefix):
+                    raise SerializationError("ヘッダの開始記号がありません")
+                values = parse_header_line(line[len(self._options.metadata_prefix):],
+                                           separator=self._options.metadata_separator,
+                                           multiple=self._options.metadata_multiple)
+                if metadata.keys() & values.keys():
+                    raise SerializationError("ヘッダのキーが重複しています")
+                metadata.update({key: None if value == "" and self._options.empty_as_none else value
+                                 for key, value in values.items()})
+            else:
+                raise SerializationError("metaの終端マーカーがありません")
         document = self._format.loads(serialized_text)
         targets = self._row_targets(document.columns)
 
@@ -216,7 +249,7 @@ class BlockRowsSerializer:
             except ValidationError as error:
                 raise SerializationError(f"複数行レコードのモデル検証に失敗しました: {error}") from error
 
-        return RowsDocument(metadata={}, rows=rows)
+        return RowsDocument(metadata=metadata, rows=rows)
 
     def loads(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> list[ModelValue]:
         return self.loads_document(serialized_text, model_binding).rows
@@ -224,9 +257,14 @@ class BlockRowsSerializer:
     def dumps_document(
         self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue], *, metadata: dict[str, Any],
     ) -> str:
-        if metadata:
-            raise ConfigurationError("複数行形式の利用者メタ出力は未対応です")
-        return self.dumps(rows, model_binding)
+        """ metaを列定義の前へ置き、本文のレコード構成は従来の処理へ委譲する。
+        """
+        if self._options.metadata_marker is None:
+            if metadata:
+                raise ConfigurationError("metaの出力にはmetadata_markerを指定してください")
+            return self._dump_rows(rows, model_binding)
+        header = dump_header(metadata, separator=self._options.metadata_separator, prefix=self._options.metadata_prefix)
+        return header + self._options.metadata_marker + "\n" + self._dump_rows(rows, model_binding)
 
     def _list_values(self, values: dict[str, Any], counts: Counter[str]) -> dict[str, list[object]]:
         """ 一覧の要素数を行定義と照合し、不足や余剰を黙って補正しない。
@@ -243,6 +281,9 @@ class BlockRowsSerializer:
         return lists
 
     def dumps(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
+        return self.dumps_document(rows, model_binding, metadata={})
+
+    def _dump_rows(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
         """ 直下の値と一覧要素を列定義の順へ展開し、文書全体を生成する。
         """
         self.validate_model_configuration(model_binding)

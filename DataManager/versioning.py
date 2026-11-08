@@ -209,6 +209,7 @@ class VersionedRowsRepository(Generic[DocumentValue]):
     キャスト対象はversion・metadata・rowsを持つ文書。版ごとのモデルを要求しない。
     metaの改名・補完・廃止もキャストへ渡す。cast内の版は文書直下を参照する。
     read_versionはCSV等のmeta内の版表現を解釈し、保存時の版は共通処理がmetaへ記録する。
+    JSONLの型情報modelsは、生のdict用Serializerのdocument_modelsで文書の固定名を構成する。
     """
 
     def __init__(

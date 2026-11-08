@@ -1,0 +1,6 @@
+# Settings template
+retained_values: {}
+version: 4
+threshold: 0  # Decision level
+gain: 1
+generate_output: true

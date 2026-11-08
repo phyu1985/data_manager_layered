@@ -1,0 +1,4 @@
+# Legacy settings
+version: 2
+threashold: 15.0
+operator_note: keep

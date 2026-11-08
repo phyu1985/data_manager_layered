@@ -77,3 +77,6 @@ GitHub Actionsにも同じ手順と全実行例のスモークテストを設定
 実業務のモデル・独自形式・機密の波形境界規則は収録していません。サンプル計算を実際の加工・解析へ置き換える場所はDomainです。実運用上の制約を[こちら](docs/LIMITATIONS.md)に明記しています。公開ライセンスは未設定です。GitHubへ公開する際の利用条件は所有者が決定してください。
 
 共有の解析データを使う場合、保守担当者が保存領域をStorage.initializeで一度だけ初期化してください。AnalysisWorkspaceは初期化済み領域を必須にします。アプリが起動ごとに別の管理領域を作る方式ではありません。強制編集の例は`python -m examples.shared_editing outputs/shared`です。
+
+
+追加ヘッダ・半角スペース区切り・modelsの設定と単独の版変換例は、[ヘッダと版変換の実行例](docs/HEADERS_AND_SAMPLES.md)を参照してください。

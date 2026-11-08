@@ -1,0 +1,7 @@
+version: "1"
+device: "A001"
+[columns]
+# "name" "value"
+#
+"A" "1.25"
+#

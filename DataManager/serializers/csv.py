@@ -18,6 +18,7 @@ from DataManager.documents import RowsDocument
 from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.model_conversion import ModelBinding, ModelValue
 from DataManager.serializers.field_paths import flatten_fields, unflatten_fields
+from DataManager.serializers.text_header import dump_header, parse_header_line, validate_header_separator
 
 
 @dataclass(frozen=True)
@@ -25,7 +26,9 @@ class CsvOptions:
     """ 一つのCSVの読書き規則。境界はメタ部分と本文の境界を表す。
 
     columnsは本文の列名の指定・置換に使い、metadata_keysは値だけのメタへ名前を付ける。
-    読書きで異なる列・階層区切りが必要な場合だけread_columns/read_separatorを指定する。
+    delimiterはセルの区切り、separatorは入れ子のキーの区切り。半角空白はdelimiter=" "。
+    metadata_separatorを指定すると、メタはCSVセルではなくテキストのkey/valueとして読む。
+    読書きで異なる規則が必要な場合だけread_columns/read_separator/read_delimiterを指定する。
     """
 
     by_alias: bool = False
@@ -42,6 +45,11 @@ class CsvOptions:
     metadata_layout: Literal["key_value", "values"] = "key_value"
     metadata_keys: tuple[str, ...] | None = None
     metadata_empty_as_none: bool = True
+    delimiter: str = ","
+    read_delimiter: str | None = None
+    metadata_separator: str | None = None
+    metadata_multiple: bool = False
+    metadata_prefix: str = ""
 
 
 # 既存の呼出側の移行用。実体は同じ設定型であり、内部でも三種類を持ち続けない。
@@ -68,20 +76,35 @@ class CsvSerializer:
         if dump_options is not None:
             configured = replace(configured, by_alias=dump_options.by_alias,
                                  include_header=dump_options.include_header, columns=dump_options.columns,
-                                 separator=dump_options.separator)
+                                 separator=dump_options.separator, delimiter=dump_options.delimiter)
         if load_options is not None:
             configured = replace(configured, has_header=load_options.has_header,
                                  read_columns=load_options.columns, read_separator=load_options.separator,
-                                 empty_as_none=load_options.empty_as_none)
+                                 empty_as_none=load_options.empty_as_none,
+                                 read_delimiter=load_options.read_delimiter or load_options.delimiter)
         if metadata_options is not None:
             configured = replace(configured, boundary=metadata_options.boundary or "blank_line",
                                  marker=metadata_options.marker, row_count=metadata_options.row_count,
                                  metadata_layout=metadata_options.metadata_layout,
                                  metadata_keys=metadata_options.metadata_keys,
-                                 metadata_empty_as_none=metadata_options.empty_as_none)
+                                 metadata_empty_as_none=metadata_options.empty_as_none,
+                                 metadata_separator=metadata_options.metadata_separator,
+                                 metadata_multiple=metadata_options.metadata_multiple,
+                                 metadata_prefix=metadata_options.metadata_prefix)
 
         if configured.boundary == "fixed_rows" and configured.row_count is None and configured.metadata_layout == "values" and configured.metadata_keys is not None:
             configured = replace(configured, row_count=len(configured.metadata_keys))
+        for delimiter in (configured.delimiter, configured.read_delimiter):
+            if delimiter is not None and (len(delimiter) != 1 or delimiter in '\r\n"'):
+                raise ConfigurationError("delimiterは引用符・改行以外の1文字で指定してください")
+        if configured.metadata_separator is not None:
+            validate_header_separator(configured.metadata_separator)
+            if configured.metadata_layout != "key_value" or configured.boundary is None:
+                raise ConfigurationError("metadata_separatorにはkey_valueとboundaryを指定してください")
+        elif configured.metadata_multiple or configured.metadata_prefix:
+            raise ConfigurationError("metadata_multiple / metadata_prefixにはmetadata_separatorが必要です")
+        if any(character in configured.metadata_prefix for character in "\r\n"):
+            raise ConfigurationError("metadata_prefixに改行は使えません")
         self._options = configured
         self._encoding = encoding
         if not configured.separator or configured.read_separator == "":
@@ -216,7 +239,14 @@ class CsvSerializer:
 
         # 列順を確定してから、見出しと各行を同じ構成で出力する。
         output = StringIO(newline="")
-        writer = csv.DictWriter(output, fieldnames=columns, lineterminator="\n")
+        # 空白の連続は読取時に一つへまとめるため、空値のある出力では引用して区別する。
+        quote_empty = self._options.delimiter == " " and any(
+            row.get(column) is None or row.get(column) == "" for row in flattened_rows for column in columns
+        )
+        writer = csv.DictWriter(
+            output, fieldnames=columns, lineterminator="\n", delimiter=self._options.delimiter,
+            quoting=csv.QUOTE_ALL if quote_empty else csv.QUOTE_MINIMAL,
+        )
         if self._options.include_header:
             writer.writeheader()
         writer.writerows(flattened_rows)
@@ -239,6 +269,13 @@ class CsvSerializer:
                 raise ConfigurationError("CSVメタを保存するにはCsvOptionsのboundaryを指定してください（旧metadata_optionsにも対応）")
             return self._dump_rows(rows, model_binding)
 
+        if options.metadata_separator is not None:
+            header = dump_header(metadata, separator=options.metadata_separator, prefix=options.metadata_prefix)
+            if options.boundary == "fixed_rows" and len(metadata) != options.row_count:
+                raise SerializationError("CSVメタの行数がrow_countと一致しません")
+            boundary = "\n" if options.boundary == "blank_line" else (options.marker or "") + "\n" if options.boundary == "marker" else ""
+            return header + boundary + self._dump_rows(rows, model_binding)
+
         # 固定件数を合わせるための補完・切捨てはしない。別の値を保存してしまうのを防ぐ。
         if options.boundary == "fixed_rows" and len(metadata) != options.row_count:
             raise SerializationError("CSVメタの件数がrow_countと一致しません")
@@ -249,7 +286,10 @@ class CsvSerializer:
 
         # metaを先頭へ書き、設定された境界の後ろへ通常の本文を連結する。
         output = StringIO(newline="")
-        writer = csv.writer(output, lineterminator="\n")
+        writer = csv.writer(
+            output, lineterminator="\n", delimiter=self._options.delimiter,
+            quoting=csv.QUOTE_ALL if self._options.delimiter == " " else csv.QUOTE_MINIMAL,
+        )
         for key in keys:
             value = metadata[key]
             if not key.strip():
@@ -274,8 +314,13 @@ class CsvSerializer:
         if options is None:
             return RowsDocument(metadata={}, rows=self._load_rows(serialized_text, model_binding))
 
-        reader = csv.reader(StringIO(serialized_text, newline=""), strict=True)
+        if options.metadata_separator is not None:
+            return self._load_text_header(serialized_text, model_binding)
+
+        delimiter = self._options.read_delimiter or self._options.delimiter
+        reader = csv.reader(StringIO(serialized_text, newline=""), delimiter=delimiter, skipinitialspace=delimiter == " ", strict=True)
         metadata: dict[str, Any] = {}
+        physical_lines = StringIO(serialized_text, newline="").readlines() if delimiter == " " else []
         try:
             # splitlinesでは引用符内の改行も境界になってしまう。CSVパーサーのレコードで数える。
             while True:
@@ -284,7 +329,7 @@ class CsvSerializer:
                 cells = next(reader, None)
                 if cells is None:
                     raise SerializationError("CSVメタの境界、または指定件数のメタがありません")
-                if options.boundary == "blank_line" and not cells:
+                if options.boundary == "blank_line" and (not cells or delimiter == " " and cells == [""] and not physical_lines[reader.line_num - 1].strip()):
                     break
                 if options.boundary == "marker" and cells == [options.marker]:
                     break
@@ -307,17 +352,52 @@ class CsvSerializer:
 
             # 残りもcsv.writerで受け渡し、引用符・区切り文字・セル内改行を失わないようにする。
             body = StringIO(newline="")
-            csv.writer(body, lineterminator="\n").writerows(reader)
+            csv.writer(
+                body, lineterminator="\n", delimiter=delimiter,
+                quoting=csv.QUOTE_ALL if delimiter == " " else csv.QUOTE_MINIMAL,
+            ).writerows(reader)
         except csv.Error as error:
             raise SerializationError(f"CSV行{reader.line_num}: {error}") from error
 
         return RowsDocument(metadata=metadata, rows=self._load_rows(body.getvalue(), model_binding))
 
+    def _load_text_header(
+        self, text: str, model_binding: ModelBinding[ModelValue],
+    ) -> RowsDocument[dict[str, Any], ModelValue]:
+        """ 物理行でヘッダの境界を確定し、本文は引用符内改行を保ったままCSVへ渡す。
+        """
+        options = self._options
+        lines = StringIO(text, newline="").readlines()
+        metadata: dict[str, Any] = {}
+        index = 0
+        while True:
+            if options.boundary == "fixed_rows" and index == options.row_count:
+                break
+            if index == len(lines):
+                raise SerializationError("テキストヘッダの境界または指定行数がありません")
+            line = lines[index].rstrip("\r\n")
+            index += 1
+            if options.boundary == "blank_line" and not line.strip():
+                break
+            if options.boundary == "marker" and line.strip() == options.marker:
+                break
+            if not line.startswith(options.metadata_prefix):
+                raise SerializationError("ヘッダの開始記号がありません")
+            values = parse_header_line(line[len(options.metadata_prefix):],
+                                       separator=options.metadata_separator or ":", multiple=options.metadata_multiple)
+            if metadata.keys() & values.keys():
+                raise SerializationError("ヘッダのキーが重複しています")
+            metadata.update({key: None if value == "" and options.metadata_empty_as_none else value
+                             for key, value in values.items()})
+
+        return RowsDocument(metadata=metadata, rows=self._load_rows("".join(lines[index:]), model_binding))
+
     def _load_rows(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> list[ModelValue]:
         """ 列を階層へ戻し、各行を指定モデルまたはdictへ復元する。
         """
         self.validate_model_configuration(model_binding)
-        reader = csv.reader(StringIO(serialized_text, newline=""), strict=True)
+        delimiter = self._options.read_delimiter or self._options.delimiter
+        reader = csv.reader(StringIO(serialized_text, newline=""), delimiter=delimiter, skipinitialspace=delimiter == " ", strict=True)
         try:
             # 列名行の有無と置換設定から、各セルの復元先を一度だけ決める。
             if self._options.has_header:
@@ -337,8 +417,9 @@ class CsvSerializer:
 
             # セル数を照合し、列の階層を戻してから一件ずつモデルで検証する。
             restored_values: list[ModelValue] = []
+            physical_lines = StringIO(serialized_text, newline="").readlines() if delimiter == " " else []
             for cells in reader:
-                if not cells:
+                if not cells or (delimiter == " " and cells == [""] and not physical_lines[reader.line_num - 1].strip()):
                     continue
                 if len(cells) != len(columns):
                     raise SerializationError(f"CSV行{reader.line_num}: 見出しと値の数が異なります")

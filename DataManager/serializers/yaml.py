@@ -15,7 +15,7 @@ from ruamel.yaml.error import YAMLError
 from ruamel.yaml.nodes import MappingNode, SequenceNode
 from ruamel.yaml.scalarbool import ScalarBoolean
 
-from DataManager.errors import SerializationError
+from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.model_conversion import ModelBinding, ModelValue
 
 
@@ -29,6 +29,7 @@ class YamlDumpOptions:
     indent_mapping: int = 2
     indent_sequence: int = 4
     indent_offset: int = 2
+    footer_fields: tuple[str, ...] = ()
 
 
 class YamlSerializer:
@@ -40,6 +41,9 @@ class YamlSerializer:
 
     def __init__(self, *, dump_options: YamlDumpOptions | None = None):
         self._dump_options = dump_options or YamlDumpOptions()
+        footer_fields = self._dump_options.footer_fields
+        if any(not name.strip() for name in footer_fields) or len(set(footer_fields)) != len(footer_fields):
+            raise ConfigurationError("footer_fieldsは空欄・重複のないフィールド名で指定してください")
 
     @property
     def encoding(self) -> str:
@@ -301,15 +305,16 @@ class YamlSerializer:
     ) -> str:
         # まず書式の土台を作る。既存文書のコメントをテンプレートより優先する。
         document = self._load_document(template_text or "")
+        # 文書先頭のコメントはruamelの文書コメントへ残し、末尾フィールドと一緒に複製しない。
         prefixes = {
             path: prefix for path, (_, prefix) in self._mapping_prefixes(document, (template_text or "").splitlines(keepends=True)).items()
-            if prefix
+            if prefix and not (path == (next(iter(document), None),) and path[0] in self._dump_options.footer_fields)
         }
         if existing_text is not None:
             existing = self._load_document(existing_text)
             prefixes.update({
                 path: prefix for path, (_, prefix) in self._mapping_prefixes(existing, existing_text.splitlines(keepends=True)).items()
-                if prefix
+                if prefix and not (path == (next(iter(existing), None),) and path[0] in self._dump_options.footer_fields)
             })
             self._merge_document(document, existing, copy_comments=True)
 
@@ -320,6 +325,16 @@ class YamlSerializer:
         if exact_fields:
             self._keep_output_fields(document, data)
         self._merge_document(document, data, copy_comments=False)
+
+        # 本文と維持項目の順序を分ける。フィールド名は利用側の設定で指定する。
+        node: Any = document
+        footer = [name for name in self._dump_options.footer_fields if name in document]
+        for name in footer:
+            node.move_to_end(name)
+        if footer and len(footer) < len(document):
+            path = (footer[0],)
+            prefix = prefixes.get(path, [])
+            prefixes[path] = prefix if prefix and not prefix[0].strip() else ["\n", *prefix]
 
         # 値の反映を終えた編集用文書を、最後にYAML文字列へ書き出す。
         output = StringIO()

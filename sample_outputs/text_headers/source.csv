@@ -1,0 +1,4 @@
+version: 1    device: A001
+[data]
+name    value
+A    1.25

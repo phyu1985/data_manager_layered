@@ -91,3 +91,6 @@ time,value
 実行例は`python -m examples.metadata`です。4種類の出力を見比べられます。入力例と出力見本は[sample_outputs/metadata](../sample_outputs/metadata)、テストは[メタ情報の回帰テスト](../tests/test_document_metadata.py)です。
 
 窓口の共通規則と版変換付きの構成は[FILE_INTERFACES.md](FILE_INTERFACES.md)にまとめています。
+
+
+追加ヘッダ・半角スペース区切り・modelsの設定と単独の版変換例は、[ヘッダと版変換の実行例](HEADERS_AND_SAMPLES.md)を参照してください。

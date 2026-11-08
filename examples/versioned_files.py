@@ -2,72 +2,15 @@
 """
 import argparse
 from pathlib import Path
-from typing import Any
 
-from pydantic import BaseModel
 
 from DataManager import (
-    BlockRowsSerializer, BlockRowsOptions, CsvOptions, CsvSerializer, FileService,
-    JsonlSerializer, ObjectRepository, RowsDocument, RowsRepository, VersionConverter, VersionedRowsRepository,
+    BlockRowsSerializer, BlockRowsOptions, FileService, ObjectRepository, RowsRepository,
 )
 from DataManager.settings_versions import SettingsDocument, create_settings_repository
 from Domain.models import Settings
 from examples.extended_formats import Attribute, BlockModel
-
-
-class CaptureMetadata(BaseModel):
-    """ 現在版のmeta。旧名deviceはキャストでinstrumentへ変更する。
-    """
-
-    version: int
-    instrument: str
-
-
-class Reading(BaseModel):
-    """ 現在版の測定行。
-    """
-
-    time: int
-    value: float
-
-
-def upcast_capture(document: dict[str, Any]) -> dict[str, Any]:
-    """ metaと本文を同じ版の構造へ変える。廃止項目は引き継がない。
-    """
-    return {
-        **document,
-        "metadata": {"instrument": document["metadata"]["device"]},
-        "rows": [{"time": row["time"], "value": row["reading"]} for row in document["rows"]],
-    }
-
-
-def downcast_capture(document: dict[str, Any]) -> dict[str, Any]:
-    """ 旧版が理解できるmeta名と本文名へ戻す。
-    """
-    return {
-        **document,
-        "metadata": {"device": document["metadata"]["instrument"]},
-        "rows": [{"time": row["time"], "reading": row["value"]} for row in document["rows"]],
-    }
-
-
-def decode_capture(document: dict[str, Any]) -> RowsDocument[CaptureMetadata, Reading]:
-    """ キャスト完了後に、metaと本文を現在のモデルで検証する。
-    """
-    return RowsDocument(
-        metadata=CaptureMetadata.model_validate(document["metadata"]),
-        rows=[Reading.model_validate(row) for row in document["rows"]],
-    )
-
-
-def encode_capture(document: RowsDocument[CaptureMetadata, Reading]) -> dict[str, Any]:
-    """ 現在版の辞書へ戻す。出力版の選択はVersionedRowsRepositoryが担当する。
-    """
-    return {
-        "version": 1,
-        "metadata": document.metadata.model_dump(),
-        "rows": [row.model_dump() for row in document.rows],
-    }
+from examples.versioned_rows import rows_example
 
 
 def yaml_example(directory: Path):
@@ -112,38 +55,6 @@ def yaml_example(directory: Path):
     artifact.write_text("previous result", encoding="utf-8")
     assert current.load().settings.generate_output is False
     assert repository.load("v3.json").settings.generate_output is True
-
-
-def rows_example(directory: Path):
-    """ CSVの旧meta・旧本文を読み、現在JSONLと旧版CSVへ出し分ける。
-    """
-    raw_repository = RowsRepository[dict[str, Any]](
-        model=dict, base_directory=directory,
-        serializers_by_extension={
-            ".csv": CsvSerializer(options=CsvOptions(boundary="blank_line")),
-            ".jsonl": JsonlSerializer(),
-        },
-    )
-    raw_repository.save_document("source.csv", RowsDocument(
-        metadata={"version": 0, "device": "A001", "unused": "discard"},
-        rows=[{"time": 0, "reading": 1.2}],
-    ))
-    repository = VersionedRowsRepository(
-        repository=raw_repository,
-        converter=VersionConverter(current_version=1, upcasts={0: upcast_capture}, downcasts={1: downcast_capture}),
-        decode_current=decode_capture, encode_current=encode_capture,
-        read_version=lambda metadata: int(metadata.get("version", 0)),
-    )
-    source = FileService(repository=repository, path="source.csv")
-    document = source.load()
-    assert document.metadata == CaptureMetadata(version=1, instrument="A001")
-    source.save_as("current.jsonl", document)
-    legacy = FileService(repository=repository.for_version(0), path="legacy.csv")
-    legacy.save(document)
-    assert legacy.load() == document
-    saved = raw_repository.load_document("legacy.csv")
-    assert saved.metadata == {"device": "A001", "version": "0"}
-    assert saved.rows == [{"time": "0", "reading": "1.2"}]
 
 
 def blocks_example(directory: Path):

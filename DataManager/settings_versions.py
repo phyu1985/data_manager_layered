@@ -8,6 +8,8 @@ from typing import Any, cast
 from DataManager.file_io import CommitGuard
 from DataManager import ObjectRepository, VersionConverter, VersionedObjectRepository
 from Domain.models import Settings
+from DataManager.repositories import default_object_serializers
+from DataManager.serializers.yaml import YamlDumpOptions, YamlSerializer
 
 
 @dataclass
@@ -113,10 +115,14 @@ def create_settings_repository(
 ) -> VersionedObjectRepository[SettingsDocument]:
     """ ファイル形式の設定と業務の互換規則を、この組立箇所だけで接続する。
     """
+    serializers = default_object_serializers()
+    yaml = YamlSerializer(dump_options=YamlDumpOptions(footer_fields=("retained_values",)))
+    serializers.update({".yaml": yaml, ".yml": yaml})
+
     return VersionedObjectRepository(
         repository=ObjectRepository(
             model=dict, base_directory=directory, commit_guard=commit_guard,
-            template_directory=template_directory,
+            template_directory=template_directory, serializers_by_extension=serializers,
         ),
         converter=VersionConverter(
             current_version=4,

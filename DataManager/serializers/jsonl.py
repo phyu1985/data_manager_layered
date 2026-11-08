@@ -38,11 +38,13 @@ class JsonlSerializer:
     """ 一覧とJSONLを相互変換する。混在モデルだけ本文に平坦なtagキーを持つ。
 
     メタと本文の処理を分け、全件保存と追記で同じ形式検証を使う。
+    document_modelsはdictで版変換する文書の固定名。モデル生成や版番号とは独立に照合する。
     """
 
     def __init__(
         self, *, tag_field: str = "type",
         model_tags: Mapping[type[BaseModel], str] | None = None,
+        document_models: Sequence[str] | None = None,
         dump_options: JSONLDumpOptions | None = None, load_options: JSONLLoadOptions | None = None,
     ):
         """ tagのキー名・固定名と、形式専用の読み書き設定を保持する。
@@ -51,6 +53,12 @@ class JsonlSerializer:
         if not tag_field.strip():
             raise ConfigurationError("tag_fieldは空白以外の文字を含む必要があります")
 
+        if isinstance(document_models, str):
+            raise ConfigurationError("document_modelsには文字列一つではなく型名の一覧を指定してください")
+        self._document_models = tuple(document_models) if document_models is not None else None
+        if self._document_models is not None and (not self._document_models or any(not name.strip() for name in self._document_models)
+                                                 or len(set(self._document_models)) != len(self._document_models)):
+            raise ConfigurationError("document_modelsは空欄・重複のない型名の一覧です")
         self._tag_field = tag_field
         self._model_tags: dict[type[object], str] = {
             model_class: tag for model_class, tag in (model_tags or {}).items()
@@ -75,6 +83,9 @@ class JsonlSerializer:
     def _build_models_by_tag(self, model_binding: ModelBinding[ModelValue]) -> dict[str, type[ModelValue]]:
         """ 型名から許可済みクラスを選ぶための対応表を返す。
         """
+        if self._document_models is not None and model_binding.data_mode != "dict":
+            raise ConfigurationError("document_modelsは版変換前のdict入出力用です。通常モデルはmodel_tagsを使います")
+
         # 固定tagの指定が、Repositoryで許可していないクラスを持ち込まないようにする。
         if any(
             model_class not in model_binding.model_classes
@@ -126,11 +137,13 @@ class JsonlSerializer:
     def _build_metadata(self, model_binding: ModelBinding[ModelValue]) -> dict[str, Any]:
         """ ファイルの用途を照合するためのメタ情報を作る。
         """
+        models_by_tag = self._build_models_by_tag(model_binding)
         # 型を指定した順序だけでメタの不一致にならないよう、型名は並べ替えて記録する。
         metadata: dict[str, Any] = {
             "schema_version": 1,
             "mode": model_binding.data_mode,
-            "models": sorted(self._build_models_by_tag(model_binding)),
+            # dictのままcastする場合も、論理的なデータ種類を明示して照合できる。
+            "models": sorted(self._document_models if self._document_models is not None else models_by_tag),
         }
 
         if model_binding.data_mode == "mixed":
