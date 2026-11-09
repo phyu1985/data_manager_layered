@@ -7,9 +7,7 @@ from typing import Any, BinaryIO
 
 from pydantic import BaseModel
 
-from DataManager import (
-    ObjectRepository, RowsRepository, WaveformHeader, WaveformOptions, WaveformRepository,
-)
+from DataManager import ObjectRepository, RowsRepository, WaveformHeader, WaveformOptions, WaveformRepository
 
 
 class User(BaseModel):

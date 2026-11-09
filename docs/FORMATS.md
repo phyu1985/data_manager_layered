@@ -89,7 +89,7 @@ dictモードのセルは基本的にstrまたはNoneであり、数値の型ま
 from DataManager import CsvOptions, CsvSerializer
 
 serializer = CsvSerializer(
-    options=CsvOptions(include_header=False, has_header=False, columns=("name", "count"), empty_as_none=False),
+    options=CsvOptions(header=False, columns=("name", "count"), empty_as_none=False),
     encoding="utf-8-sig",
 )
 ```
@@ -164,3 +164,6 @@ decrypt="auto"の既定では.shnに復号を要求し、その他の拡張子�
 
 実ファイル・実暗号方式・社内ヘッダーとの結合は、社内側の関数を接続して確認する必要があります。
 このリポジトリのテストとexamples/formats.pyでは、社内仕様を含まない合成形式を使っています。
+
+
+JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](FORMAT_OPTIONS.md)を参照してください。

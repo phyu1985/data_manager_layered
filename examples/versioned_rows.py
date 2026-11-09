@@ -7,8 +7,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
-    CsvOptions, CsvSerializer, FileService, JsonlSerializer, RowsDocument,
-    RowsRepository, VersionConverter, VersionedRowsRepository,
+    CsvOptions, CsvSerializer, FileService, JsonlSerializer,
+    RowsDocument, RowsRepository, VersionConverter, VersionedRowsRepository,
+    CsvKeyValueHeaderOptions,
 )
 
 
@@ -73,8 +74,8 @@ def rows_example(directory: Path):
     raw_repository = RowsRepository[dict[str, Any]](
         model=dict, base_directory=directory,
         serializers_by_extension={
-            ".csv": CsvSerializer(options=CsvOptions(boundary="blank_line")),
-            ".jsonl": JsonlSerializer(document_models=("Reading",)),
+            ".csv": CsvSerializer(metadata=CsvKeyValueHeaderOptions.until_blank_line()),
+            ".jsonl": JsonlSerializer.for_dict(document_models=('Reading',)),
         },
     )
     raw_repository.save_document("source.csv", RowsDocument(

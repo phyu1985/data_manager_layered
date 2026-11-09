@@ -6,7 +6,11 @@ import numpy as np
 from pydantic import BaseModel, ValidationError
 import pytest
 
-from DataManager import ConfigurationError, ObjectFileService, ObjectRepository, RowsFileService, RowsRepository, SerializationError, WaveformFileService, WaveformHeader, WaveformOptions, WaveformRepository
+from DataManager import (
+    ConfigurationError, ObjectFileService, ObjectRepository, RowsFileService,
+    RowsRepository, SerializationError, WaveformFileService, WaveformHeader,
+    WaveformOptions, WaveformRepository,
+)
 
 
 class Settings(BaseModel):

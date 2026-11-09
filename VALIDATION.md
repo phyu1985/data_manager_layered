@@ -1,6 +1,6 @@
 # 配布物の検証と残る範囲
 
-2026-11-09。Windows / Python 3.12.14で確認しました。
+2026-11-10。Windows / Python 3.12.14で確認しました。
 
 | 確認 | 結果 |
 |---|---|
@@ -66,3 +66,46 @@ Windowsのローカル確認です。Linux端末・実SMB・ネットワーク�
 YAMLのfooter_fieldsによる末尾配置・先頭コメントの重複防止・反復保存、CSVとブロックの空白セル区切り、空セルと引用符内改行、文字列ヘッダのコロン/空白区切り、複数対・境界不足・キー重複・パス/日時、名前付きdict JSONLのmodels照合を人工入力で確認しました。新しいpytestケースは増やさず、既存のYAML版変換ケースへ末尾配置と反復保存の確認を追加しています。
 
 Object/Rowsの単独例・追加ヘッダ例・従来の統合例を実行し、出力見本もsample_outputsへ収録しました。全工程CSV/JSONL/Excel、既存形式、FileService、meta、拡張形式/DataFrame、共有編集の実行例も確認済みです。設定と移行上の制約は[ヘッダと版変換の実行例](docs/HEADERS_AND_SAMPLES.md)を参照してください。実SMB/Linuxの未検証範囲は継続します。
+
+
+## 2026-11-09：CSV設定の再構成とa〜g
+
+CsvOptionsを本文の8項目へ縮小し、可変メタのCsvHeaderOptionsと順序付きのCsvFixedHeaderOptionsを分けました。固定ヘッダの行書式はCsvHeaderFieldで宣言します。旧オプション名・旧引数は廃止し、現コード・既存テスト・実行例を新APIへ移行しました。変更点と全項目の条件は[CSV設定ガイド](docs/CSV_OPTIONS.md)にまとめています。
+
+利用者提供のa〜gをexamples/csv_dataから読み、別の出力先へ保存・再読して値の一致を確認しました。gは見出しに空欄があっても、指定した6列で本文を照合して全列を保持します。説明コメント・列名の接頭辞・末尾の空セルは、それぞれの適用範囲を分けています。count値は本文件数と見なしていません。
+
+既存313件成功、最低対応環境270件成功・Excel関連4件スキップ。Pyrightはエラー・警告0件、故意の型誤りは3/3/2/2/2件です。新しいpytestケースは追加せず、既存ケースを新APIへ更新しました。別途112項目で、本文と異なるヘッダ区切り、値だけのヘッダ、空値、前後空白、引用符・改行、末尾の非空値の拒否、見出しが不足する場合の6列置換、設定矛盾、BaseModel復元を確認しました。
+
+Object/Rowsの版変換例・追加ヘッダ例に加え、既存のCSV/JSONL/Excel全工程、サービス、メタ、拡張形式/DataFrame、共有編集の実行例も確認しています。SMB/Linux実機の未確認範囲は継続します。
+
+
+## CSV実行例のパターン別分離
+
+examples/csv_layouts.pyをsample_a〜sample_gへ分け、各関数で設定から再読確認まで追えるようにしました。全例と--pattern gの単独実行、型チェック（エラー・警告0件）、既存313件を確認しています。Serializerの本体や保存形式は変更していません。
+
+
+## AA・AAAの二段CSV
+
+TwoTableCsvSerializerが上下段の境界・メタ配置・件数を担当し、各表はCsvSerializerへ委譲します。examples/two_table_csv.pyのsample_aa / sample_aaaで、別の行モデルを持つ一文書として読み、別名で保存して再読しました。入力例は変更していません。
+
+既存313件成功、最低対応環境270件成功・4件スキップ、Pyrightはエラー・警告0件。上下段の行型も正例で確認し、故意の型誤りは3/3/2/2/2件です。既存ケースへ末尾空セルの保持と非空の余剰列の拒否を追加し、新しいpytestケースは増やしていません。人工入力では29項目で、件数・境界不一致、引用符内空行、CRLF、0件の段、末尾空セル、メタ項目不一致、上書き制御、変換失敗時の既存ファイル保持を確認しました。
+
+従来のa〜gの実行例も成功しています。AAAは余分な末尾delimiterを付けないCSVへ正規化して保存します。max_indexは保持だけを行い、意味を推測して補正・照合しません。構成・条件は[二段CSVの使い方](docs/TWO_TABLE_CSV.md)を参照してください。
+
+## 2026-11-10：設定検証と処理段階の整理
+
+CsvHeaderOptionsを項目宣言型へ統一し、項目名が不定のメタはCsvKeyValueHeaderOptionsのfixed_rows / until_blank_line / until_markerで生成します。CsvHeaderFieldもvalue_only / compact / whitespace / separatedで意図を表します。CSV設定型は4種類のままです。旧CsvFixedHeaderOptionsと、旧CsvHeaderOptionsの境界引数は移行が必要です。
+
+validate_headerを廃止し、各設定値は生成時に確定します。CSVヘッダ・テキストの解析を目的別に分け、BlockRows・KV・JSONL・YAMLの静的設定も生成時へ移しました。二段CSV保存の件数確認は再読経路へ集めています。外部データ・モデル生成・追記先・保存直前の保護は維持しています。対象と理由は[検証と処理の整理](docs/VALIDATION_FLOW.md)に記載しました。
+
+既存313件成功、最低対応環境270件成功・4件スキップ、Pyrightはエラー・警告0件。故意の型誤りは3/3/2/2/2件です。新しいpytestケースは追加せず、不正設定の既存ケースを生成入口の検証へ更新しました。別途94項目で、設定の不変性・各書式の引用値/空値/改行の往復・不正な生成値を確認し、二段CSVの件数・境界・上書き保護も29項目で確認しています。
+
+新しいexamples/versioned_csv.pyは、b.csv由来の旧版からmetaと本文をupcastし、編集後に現在版CSV/JSONLと旧版CSVへ保存します。元入力の不変・各出力の再読を確認し、出力見本をsample_outputs/versioned_csvへ収録しました。旧版と現在版で異なるCSVヘッダの構成は明示しています。既存の全工程CSV/JSONL/Excel、各形式・FileService・拡張形式/DataFrame・共有編集の例も実行しました。SMB/Linuxの未確認範囲は継続します。
+
+## 2026-11-10：JSONL・KV・BlockRowsの指定構造の整理
+
+JSONLは通常モデルの固定tagとdict文書の固定名をfor_models / for_dictの別の生成入口へ分け、全件読書きで対応表を一度だけ準備して全行に渡します。KVはwith_value_header / with_key_value_headerで方式を選び、モードとキー一覧の矛盾を作りません。BlockRowsはBlockRowへ列・所属先・保存見出しをまとめ、ファイルメタはCSVと同じヘッダ設定を再利用します。
+
+既存313件成功、最低対応依存環境270件成功・4件スキップ、Pyrightはエラー・警告0件、故意の型誤りは3/3/2/2/2件です。新しいpytestケースは増やさず、旧JSONL設定の既存呼出を新しい生成方法へ移行しました。人工入力44項目で、変更前とのJSONL/KV/ブロック出力の一致、JSONLの操作内一回の対応表準備、KV設定の不変性・replaceでの保持、行定義の矛盾検出、メタ共通化を確認しました。
+
+examples/format_options.pyには混在JSONL・値だけのKVヘッダ・キー付きKVヘッダ・属性付きブロックをそれぞれ独立した関数で載せています。VersionedRows・a〜g・AA/AAAの既存例、CSV/JSONL/Excelの全工程、DataFrame・共有編集の例も実行しました。設定APIの移行と残した検証の理由は[各形式の設定](docs/FORMAT_OPTIONS.md)を参照してください。保存形式と既存のファイルメタは維持しています。

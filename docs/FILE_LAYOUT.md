@@ -26,7 +26,7 @@ sample_dataは入力例、outputsは実行時出力（Git対象外）、testsは
 
 ## メタ付き一覧の追加
 
-DataManager/documents.pyが共通のRowsDocument、serializers/csv.pyのCsvOptionsがCSVの境界規則を担当します。RepositoryとRowsFileServiceのload_document / save_documentはCSV・JSONL共通です。例はexamples/metadata.py、詳細は[METADATA.md](METADATA.md)です。
+DataManager/documents.pyが共通のRowsDocument、serializers/csv_options.pyの設定型が本文とヘッダを分け、csv_headers.pyがCSVの境界規則を担当します。RepositoryとRowsFileServiceのload_document / save_documentはCSV・JSONL共通です。例はexamples/metadata.py、詳細は[METADATA.md](METADATA.md)です。
 
 ## 共有編集権と拡張形式
 
@@ -36,4 +36,4 @@ DataManager/storage.pyは保存領域の識別・編集権・保存確定時の�
 
 DataManager/services.pyが汎用のFileService / FileReader / FileWriter、repositories.pyがRowsDocumentRepository、versioning.pyがVersionedObjectRepository / VersionedRowsRepositoryです。UseCase/analysis.pyはAnalysisWorkspace、processing.pyは加工入力の組立て、external_updates.pyはExternalUpdaterです。帳票はDataManager/report_repository.pyのReportRepositoryへ移し、report_export.pyは旧名の互換窓口です。詳細は[FILE_INTERFACES.md](FILE_INTERFACES.md)を参照してください。
 
-attribute_blocks.pyは旧AttributeBlockSerializerの移行窓口、block_rows.pyはrow_targetsによる直下・一覧への対応付け、examples/versioned_files.pyはYAMLの版別テンプレート・metaの版変換・属性行の例です。構成と保存順は[TEMPLATES_AND_VERSIONS.md](TEMPLATES_AND_VERSIONS.md)を参照してください。
+attribute_blocks.pyは旧AttributeBlockSerializerの移行窓口、block_rows.pyはBlockRowによる直下・一覧への対応付け、examples/versioned_files.pyはYAMLの版別テンプレート・metaの版変換・属性行の例です。構成と保存順は[TEMPLATES_AND_VERSIONS.md](TEMPLATES_AND_VERSIONS.md)を参照してください。

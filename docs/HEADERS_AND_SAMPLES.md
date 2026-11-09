@@ -46,15 +46,14 @@ retained_values:
 
 ## CSVのセル区切りとヘッダ区切り
 
-`delimiter=" "`で本文を半角スペース区切りにします。連続スペースも読めます。引用された空セルは保持し、空白を含む値・空セルは保存時に引用します。`read_delimiter`は入力だけ別の区切りにしたい場合の指定です。
+`delimiter=" "`で本文を半角スペース区切りにします。連続スペースも読めます。引用された空セルは保持し、空白を含む値・空セルは保存時に引用します。入力だけ別の区切りにするなら、read_options=CsvOptions(delimiter=...)を指定します。
 
-既存の`separator="."`は`position.x`のような入れ子のキーを作るための設定です。列の区切りとは用途が違うので、その意味を変更していません。
+`field_separator="."`は`position.x`のような入れ子のキーを作るための設定です。列の区切りとは用途が違うので、その意味を変更していません。
 
 ```python
-CsvOptions(
-    delimiter=" ",
-    boundary="marker", marker="[data]",
-    metadata_separator=":", metadata_multiple=True,
+CsvSerializer(
+    options=CsvOptions(delimiter=" "),
+    metadata=CsvKeyValueHeaderOptions.until_marker("[data]").as_text(multiple=True),
 )
 ```
 
@@ -66,11 +65,11 @@ name    value
 A    1.25
 ```
 
-- `metadata_separator=None`（既定）：従来の2セルのCSVメタ。本文と同じdelimiterを使います。
-- `metadata_separator=":"`：コロン前後のスペースを許容します。`" "`ならkeyとvalueも空白区切りです。
-- `metadata_multiple=False`（既定）：一行一対。区切りの後ろ全体が値なので、日時の空白や値内のコロンを保持します。
-- `metadata_multiple=True`：一行に複数対を読めます。値に空白がある場合はJSON文字列として二重引用符で囲みます。引用内のバックスラッシュ等はJSONのエスケープ規則です。引用しないWindowsパスやURLのコロンは値の一部です。
-- `metadata_prefix="# "`：各meta行に接頭辞がある形式向けです。境界マーカーには接頭辞を付けず、設定文字列そのもので比較します。
+- `CsvKeyValueHeaderOptions.separator=None`（既定）：従来の2セルのCSVメタ。本文と同じdelimiterを使います。
+- `separator=":"`：コロン前後のスペースを許容します。`" "`ならkeyとvalueも空白区切りです。
+- `multiple=False`（既定）：一行一対。区切りの後ろ全体が値なので、日時の空白や値内のコロンを保持します。
+- `multiple=True`：一行に複数対を読めます。値に空白がある場合はJSON文字列として二重引用符で囲みます。引用内のバックスラッシュ等はJSONのエスケープ規則です。引用しないWindowsパスやURLのコロンは値の一部です。
+- `prefix="# "`：各meta行に接頭辞がある形式向けです。境界マーカーには接頭辞を付けず、設定文字列そのもので比較します。
 
 保存は一対一行に揃え、値を引用します。元のスペース数や一行内の配置は再現しません。メタの値は文字列として読み、数値・日時の変換には`metadata_model`を指定します。テキストヘッダの`fixed_rows`は**物理行数**です。従来のCSVメタは引用符内改行を含むCSVレコード数です。
 
@@ -82,9 +81,8 @@ A    1.25
 
 ```python
 BlockRowsOptions(
-    columns=(("name", "value"),),
-    metadata_marker="[columns]",
-    metadata_separator=":", metadata_multiple=True,
+    rows=(BlockRow.root("name", "value"),),
+    metadata=CsvKeyValueHeaderOptions.until_marker("[columns]").as_text(multiple=True),
 )
 ```
 
@@ -97,7 +95,7 @@ A;1.25
 #
 ```
 
-`metadata_marker`より前が追加ヘッダ、その後が従来の列定義・レコードです。本文の`marker="#"`とは別に境界を設定するので、ヘッダと列名を取り違えません。`metadata_prefix`もCSVと同じ意味です。
+metadataで指定した終端より前が追加ヘッダ、その後が従来の列定義・レコードです。本文の`marker="#"`とは別に境界を設定するので、ヘッダと列名を取り違えません。メタの接頭辞も共通のヘッダ設定へ指定します。
 
 ```python
 document = repository.load_document("capture.blocks")
@@ -111,7 +109,7 @@ repository.save_document("export.blocks", document)
 ## VersionedRowsのmodels
 
 ```python
-JsonlSerializer(document_models=("Reading",))
+JsonlSerializer.for_dict(document_models=("Reading",))
 ```
 
 VersionedRowsRepositoryの生Repositoryは`model=dict`です。現在モデルで読むと、upcast前に旧キーが除外・拒否されるためです。任意の`decode_current`関数から復元先クラスを安全に推測できないので、dict文書の論理名をSerializerへ明示します。通常のモデルRepositoryでは従来どおりモデル型から自動で記録されます。
@@ -125,3 +123,6 @@ VersionedRowsRepositoryの生Repositoryは`model=dict`です。現在モデル�
 利用者の`metadata`は本文と一緒にupcast/downcastされます。一方、`__meta__`はJSONLの形式照合用で、業務cast対象ではありません。`schema_version`も業務データのversionとは別です。
 
 既存の`models: []`のdictファイルと、名前を指定したファイルは厳密照合で区別します。既存ファイルは名前未指定の旧構成で一度読み、名前付きの新構成で**別名へ保存**して移行できます。今回のサンプルは入力用CSVからこの名前付き構成へ保存します。名前設定を変えただけで既存JSONLを読めると想定しないでください。
+
+
+CSV設定の全項目・条件とa〜gの例は[CSV設定ガイド](CSV_OPTIONS.md)を参照してください。

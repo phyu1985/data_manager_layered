@@ -25,6 +25,14 @@ def _require_dict(value: object) -> DictionaryValue:
     return cast(DictionaryValue, value)
 
 
+def _configured_target(version: int | None, current_version: int) -> int | None:
+    """ 保存先の既定版を確定する。個々の保存要求はConverter側で改めて照合する。
+    """
+    if version is not None and (type(version) is not int or not 0 <= version <= current_version):
+        raise ConfigurationError("保存版は0以上現在版以下の整数です")
+    return version
+
+
 class VersionConverter:
     """ 版番号を読み、必要な隣接版キャストだけを順番に実行する。
 
@@ -134,11 +142,7 @@ class VersionedObjectRepository(Generic[DocumentValue]):
         self._converter = converter
         self._decode_current = decode_current
         self._encode_current = encode_current
-        if target_version is not None and (
-            type(target_version) is not int or not 0 <= target_version <= converter.current_version
-        ):
-            raise ConfigurationError("保存版は0以上現在版以下の整数です")
-        self._target_version = target_version
+        self._target_version = _configured_target(target_version, converter.current_version)
 
         # 出力版ごとの雛形を拡張子で引ける形に揃え、外部の対応表から独立させる。
         self._templates_by_version: dict[int, dict[str, str | Path]] = {}
@@ -225,11 +229,7 @@ class VersionedRowsRepository(Generic[DocumentValue]):
         self._converter = converter
         self._decode_current = decode_current
         self._encode_current = encode_current
-        if target_version is not None and (
-            type(target_version) is not int or not 0 <= target_version <= converter.current_version
-        ):
-            raise ConfigurationError("保存版は0以上現在版以下の整数です")
-        self._target_version = target_version
+        self._target_version = _configured_target(target_version, converter.current_version)
         self._read_version = read_version or converter.read_version
 
     def for_version(self, target_version: int | None) -> "VersionedRowsRepository[DocumentValue]":

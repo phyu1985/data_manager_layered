@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from DataManager.errors import ConfigurationError
-from DataManager.serializers.block_rows import BlockRowsOptions, BlockRowsSerializer
+from DataManager.serializers.block_rows import BlockRow, BlockRowsOptions, BlockRowsSerializer
 
 
 def AttributeBlockSerializer(*, attribute_count: int = 8, options: BlockRowsOptions | None = None) -> BlockRowsSerializer:
@@ -19,8 +19,11 @@ def AttributeBlockSerializer(*, attribute_count: int = 8, options: BlockRowsOpti
     )
     if [len(group) for group in original] != [4] * (attribute_count + 1) + [2]:
         raise ConfigurationError("columnsは本体4列・指定件数の属性4列・寸法2列の構成です")
-    columns = (original[0], *(("name", "value", "start", "length"),) * attribute_count, original[-1])
-    targets = (None,) + ("attrs",) * attribute_count + (None,)
-    return BlockRowsSerializer(options=replace(
-        configured, columns=columns, row_targets=targets, header_columns=configured.header_columns or original,
-    ))
+    headers = configured.header_columns or original
+    rows = (
+        BlockRow.root(*original[0], header=headers[0]),
+        *(BlockRow.items("attrs", "name", "value", "start", "length", header=headers[i + 1])
+          for i in range(attribute_count)),
+        BlockRow.root(*original[-1], header=headers[-1]),
+    )
+    return BlockRowsSerializer(options=replace(configured, rows=rows))

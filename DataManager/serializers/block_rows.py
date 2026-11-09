@@ -14,29 +14,115 @@ from pydantic import ValidationError
 from DataManager.documents import RowsDocument
 from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.model_conversion import ModelBinding, ModelValue
-from DataManager.serializers.text_header import dump_header, parse_header_line, validate_header_separator
+from DataManager.serializers.csv_headers import HeaderOptions, dump_header_text, split_header
+
+
+def _valid_column_names(columns: Sequence[str]) -> bool:
+    """ 物理一行に収まる列名の文法。設定とファイルの列定義で同じ規則を使う。
+    """
+    return (
+        bool(columns)
+        and all(name.strip() and "\n" not in name and "\r" not in name for name in columns)
+        and len(set(columns)) == len(columns)
+    )
+
+
+@dataclass(frozen=True)
+class BlockRow:
+    """ 一行の復元先列・所属先・保存見出し。対応する情報を同じ定義へまとめる。
+    """
+
+    columns: tuple[str, ...]
+    target: str | None = None
+    header: tuple[str, ...] | None = None
+
+    def __post_init__(self):
+        """ 一行の中で確定する形と名前を確認する。
+        """
+        if not _valid_column_names(self.columns):
+            raise ConfigurationError("行の列名は空欄・改行・重複のない一覧です")
+        if self.target is not None and (not self.target.strip() or self.target != self.target.strip()):
+            raise ConfigurationError("所属先は空白を除いた非空の一覧名です")
+        if self.header is not None:
+            if len(self.header) != len(self.columns) or not _valid_column_names(self.header):
+                raise ConfigurationError("保存見出しは列数に合う空欄・改行・重複のない一覧です")
+
+    @classmethod
+    def root(cls, *columns: str, header: tuple[str, ...] | None = None) -> BlockRow:
+        """ モデル直下へ対応付ける行を宣言する。
+        """
+        return cls(columns, header=header)
+
+    @classmethod
+    def items(cls, target: str, *columns: str, header: tuple[str, ...] | None = None) -> BlockRow:
+        """ 指定したモデル内の一覧へ、一要素を追加する行を宣言する。
+        """
+        if not target:
+            raise ConfigurationError("itemsには所属先の一覧名を指定してください")
+        return cls(columns, target=target, header=header)
 
 
 @dataclass(frozen=True)
 class BlockRowsOptions:
-    """ ブロックの文法と対応先。columnsは復元先、row_targetsは所属先、header_columnsは保存見出し。
+    """ ブロックの文法と行定義。列・所属先・保存見出しはrowsの各BlockRowへまとめる。
 
-    metadata_markerを指定すると、その行の手前をファイル全体のmetaとして読む。
-    metaのkey/value区切りと接頭辞はmetadata_separator / metadata_prefixで指定する。
+    metadataはCSVと同じヘッダ設定。列名ヘッダとファイル全体のメタを別の塊として宣言する。
     """
 
     delimiter: str = ";"
     marker: str = "#"
     header_prefix: str = "#"
-    columns: tuple[tuple[str, ...], ...] | None = None
+    rows: tuple[BlockRow, ...] | None = None
     empty_as_none: bool = True
     by_alias: bool = False
-    row_targets: tuple[str | None, ...] | None = None
-    header_columns: tuple[tuple[str, ...], ...] | None = None
-    metadata_marker: str | None = None
-    metadata_separator: str = ":"
-    metadata_prefix: str = ""
-    metadata_multiple: bool = False
+    metadata: HeaderOptions | None = None
+
+    def __post_init__(self):
+        """ 文法と行の対応先を確定する。メタはヘッダ設定自身で検証済み。
+        """
+        self._check_grammar()
+        self._check_targets()
+
+    def _check_grammar(self):
+        """ ブロックとCSVセルを区切る記号を確認する。
+        """
+        if len(self.delimiter) != 1 or self.delimiter in "\r\n":
+            raise ConfigurationError("セルの区切りは改行以外の1文字です")
+        symbols = (self.marker, self.header_prefix)
+        if any(not symbol or any(c in symbol for c in "\r\n") for symbol in symbols):
+            raise ConfigurationError("マーカーとヘッダ記号は改行のない非空文字列です")
+
+    def _check_targets(self):
+        """ 全行を通して、モデル直下のキーと一覧の名前の衝突だけを確認する。
+        """
+        if self.rows is None:
+            return
+        if not self.rows:
+            raise ConfigurationError("rowsには一行以上の定義が必要です")
+        root_keys = [name for row in self.rows if row.target is None for name in row.columns]
+        list_names = {row.target for row in self.rows if row.target is not None}
+        if len(set(root_keys)) != len(root_keys) or set(root_keys) & list_names:
+            raise ConfigurationError("モデル直下の列名または一覧名が重複しています")
+
+    @property
+    def columns(self) -> tuple[tuple[str, ...], ...] | None:
+        """ 文法処理へ渡す列構成を、行定義から取り出す。
+        """
+        return None if self.rows is None else tuple(row.columns for row in self.rows)
+
+    @property
+    def row_targets(self) -> tuple[str | None, ...] | None:
+        """ モデルへの対応先を、列と同じ行定義から取り出す。
+        """
+        return None if self.rows is None else tuple(row.target for row in self.rows)
+
+    @property
+    def header_columns(self) -> tuple[tuple[str, ...], ...] | None:
+        """ 別の見出しを指定した行だけを置き換える。
+        """
+        if self.rows is None or all(row.header is None for row in self.rows):
+            return None
+        return tuple(row.header if row.header is not None else row.columns for row in self.rows)
 
 
 @dataclass(frozen=True)
@@ -53,22 +139,13 @@ class BlockRowsFormat:
     """
 
     def __init__(self, options: BlockRowsOptions):
-        if (
-            len(options.delimiter) != 1 or options.delimiter in "\r\n"
-            or not options.marker or not options.header_prefix
-            or any(c in options.marker + options.header_prefix for c in "\r\n")
-        ):
-            raise ConfigurationError("区切りは改行以外の1文字、マーカーとヘッダ記号は改行のない非空文字列です")
         self._options = options
 
     @staticmethod
     def validate_columns(groups: Sequence[Sequence[str]]):
         """ 行内の重複を拒否する。異なる行の同名列は所属先を分けて扱える。
         """
-        if not groups or any(
-            not group or any(not key.strip() for key in group) or len(set(group)) != len(group)
-            for group in groups
-        ):
+        if not groups or any(not _valid_column_names(group) for group in groups):
             raise SerializationError("列定義の行・項目に空欄や重複があります")
 
     @staticmethod
@@ -164,18 +241,6 @@ class BlockRowsSerializer:
     def __init__(self, *, options: BlockRowsOptions | None = None):
         self._options = options or BlockRowsOptions()
         self._format = BlockRowsFormat(self._options)
-        if self._options.metadata_marker is not None:
-            if not self._options.metadata_marker.strip() or any(c in self._options.metadata_marker for c in "\r\n"):
-                raise ConfigurationError("metadata_markerは改行のない非空文字列です")
-            validate_header_separator(self._options.metadata_separator)
-        if any(c in self._options.metadata_prefix for c in "\r\n"):
-            raise ConfigurationError("metadata_prefixに改行は使えません")
-        if self._options.row_targets is not None:
-            if any(target is not None and (not isinstance(target, str) or not target.strip() or target != target.strip())
-                   for target in list[object](self._options.row_targets)):
-                raise ConfigurationError("row_targetsはNoneまたは空白のない一覧名で指定してください")
-            if self._options.columns is not None and len(self._options.row_targets) != len(self._options.columns):
-                raise ConfigurationError("row_targetsは列定義と同じ行数が必要です")
 
     @property
     def encoding(self) -> str:
@@ -188,12 +253,11 @@ class BlockRowsSerializer:
     def _row_targets(self, groups: Sequence[Sequence[str]]) -> tuple[str | None, ...]:
         """ 行と所属先を照合し、同じ辞書へ入るキーの衝突を拒否する。
         """
-        self._format.validate_columns(groups)
+        # 宣言した行は設定生成時に整合済み。ファイル由来の列だけをここで対応付ける。
         targets = self._options.row_targets
-        if targets is None:
-            targets = (None,) * len(groups)
-        if len(targets) != len(groups):
-            raise SerializationError("row_targetsと列定義の行数が一致しません")
+        if targets is not None:
+            return targets
+        targets = (None,) * len(groups)
 
         root_keys = [key for group, target in zip(groups, targets, strict=True) if target is None for key in group]
         list_keys = {target for target in targets if target is not None}
@@ -208,24 +272,11 @@ class BlockRowsSerializer:
         """
         self.validate_model_configuration(model_binding)
         metadata: dict[str, Any] = {}
-        if self._options.metadata_marker is not None:
-            # metaの終端を明示し、同じ#で始まる列定義と混同しない。
-            lines = StringIO(serialized_text, newline="").readlines()
-            for i, line in enumerate(lines):
-                if line.strip() == self._options.metadata_marker:
-                    serialized_text = "".join(lines[i + 1:])
-                    break
-                if not line.startswith(self._options.metadata_prefix):
-                    raise SerializationError("ヘッダの開始記号がありません")
-                values = parse_header_line(line[len(self._options.metadata_prefix):],
-                                           separator=self._options.metadata_separator,
-                                           multiple=self._options.metadata_multiple)
-                if metadata.keys() & values.keys():
-                    raise SerializationError("ヘッダのキーが重複しています")
-                metadata.update({key: None if value == "" and self._options.empty_as_none else value
-                                 for key, value in values.items()})
-            else:
-                raise SerializationError("metaの終端マーカーがありません")
+        if self._options.metadata is not None:
+            # CSVと同じ規則で先頭メタを切り出し、残りをブロックの列定義・本文へ渡す。
+            metadata, serialized_text = split_header(
+                serialized_text, self._options.metadata, self._options.delimiter,
+            )
         document = self._format.loads(serialized_text)
         targets = self._row_targets(document.columns)
 
@@ -259,12 +310,12 @@ class BlockRowsSerializer:
     ) -> str:
         """ metaを列定義の前へ置き、本文のレコード構成は従来の処理へ委譲する。
         """
-        if self._options.metadata_marker is None:
+        if self._options.metadata is None:
             if metadata:
-                raise ConfigurationError("metaの出力にはmetadata_markerを指定してください")
+                raise ConfigurationError("metaの出力にはmetadataを構成してください")
             return self._dump_rows(rows, model_binding)
-        header = dump_header(metadata, separator=self._options.metadata_separator, prefix=self._options.metadata_prefix)
-        return header + self._options.metadata_marker + "\n" + self._dump_rows(rows, model_binding)
+        header = dump_header_text(metadata, self._options.metadata, self._options.delimiter)
+        return header + self._dump_rows(rows, model_binding)
 
     def _list_values(self, values: dict[str, Any], counts: Counter[str]) -> dict[str, list[object]]:
         """ 一覧の要素数を行定義と照合し、不足や余剰を黙って補正しない。

@@ -80,3 +80,15 @@ GitHub Actionsにも同じ手順と全実行例のスモークテストを設定
 
 
 追加ヘッダ・半角スペース区切り・modelsの設定と単独の版変換例は、[ヘッダと版変換の実行例](docs/HEADERS_AND_SAMPLES.md)を参照してください。
+
+
+CSV設定の全項目・条件とa〜gの例は[CSV設定ガイド](docs/CSV_OPTIONS.md)を参照してください。
+
+
+AA・AAAの二段形式と末尾空セルは[二段CSVの使い方](docs/TWO_TABLE_CSV.md)を参照してください。
+
+
+検証の担当と設定APIの整理は[処理と検証の整理](docs/VALIDATION_FLOW.md)を参照してください。項目宣言型CSVと版変換は`python -m examples.versioned_csv outputs/versioned-csv`で実行できます。
+
+
+JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](docs/FORMAT_OPTIONS.md)を参照してください。

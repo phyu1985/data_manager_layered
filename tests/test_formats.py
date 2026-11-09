@@ -8,7 +8,10 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 import pytest
 
-from DataManager import ConfigurationError, CSVDumpOptions, CSVLoadOptions, CsvSerializer, CustomTextOptions, CustomTextSerializer, ObjectRepository, RowsRepository, SerializationError
+from DataManager import (
+    ConfigurationError, CsvOptions, CsvSerializer, CustomTextOptions,
+    CustomTextSerializer, ObjectRepository, RowsRepository, SerializationError,
+)
 
 
 class Details(BaseModel):
@@ -143,24 +146,33 @@ def test_empty_dict_csv_requires_columns(tmp_path):
         repository.save("empty.csv", [])
     configured = RowsRepository[dict[str, Any]](
         model=dict, base_directory=tmp_path,
-        serializers_by_extension={".csv": CsvSerializer(dump_options=CSVDumpOptions(columns=("id", "count")))},
+        serializers_by_extension={".csv": CsvSerializer(write_options=CsvOptions(columns=('id', 'count')))},
     )
     configured.save("empty.csv", [])
     assert (tmp_path / "empty.csv").read_text() == "id,count\n"
 
 
 def test_csv_can_keep_empty_string_and_headerless_columns(tmp_path):
-    serializer = CsvSerializer(
-        dump_options=CSVDumpOptions(include_header=False, columns=("name", "value")),
-        load_options=CSVLoadOptions(has_header=False, columns=("name", "value"), empty_as_none=False),
-        encoding="utf-8-sig",
-    )
+    serializer = CsvSerializer(write_options=CsvOptions(header=False, columns=('name', 'value')), read_options=CsvOptions(header=False, columns=('name', 'value'), empty_as_none=False), encoding='utf-8-sig')
     repository = RowsRepository[dict[str, Any]](
         model=dict, base_directory=tmp_path, serializers_by_extension={".csv": serializer},
     )
     repository.save("no_header.csv", [{"name": "日本語", "value": ""}])
     assert repository.load("no_header.csv") == [{"name": "日本語", "value": ""}]
     assert (tmp_path / "no_header.csv").read_bytes().startswith(b"\xef\xbb\xbf")
+
+    padded = CsvSerializer(options=CsvOptions(
+        header=False, columns=("name", "value"), empty_as_none=False, allow_trailing_empty_columns=True,
+    ))
+    padded_repository = RowsRepository[dict[str, Any]](
+        model=dict, base_directory=tmp_path, serializers_by_extension={".csv": padded},
+    )
+    (tmp_path / "padded.csv").write_text('日本語,,\n', encoding="utf-8")
+    assert padded_repository.load("padded.csv") == [{"name": "日本語", "value": ""}]
+    (tmp_path / "padded.csv").write_text('日本語,1,extra\n', encoding="utf-8")
+    with pytest.raises(SerializationError):
+        padded_repository.load("padded.csv")
+
 
 
 @pytest.mark.parametrize("text", ["a,a\n1,2\n", "a,a.b\n1,2\n", "a,b\n1,2,3\n", 'a\n"unclosed\n', ",a\n1,2\n"])
@@ -182,7 +194,7 @@ def test_csv_does_not_stringify_or_drop_unsupported_structures(tmp_path, value):
 def test_csv_explicit_columns_do_not_silently_drop_values(tmp_path):
     repository = RowsRepository[dict[str, Any]](
         model=dict, base_directory=tmp_path,
-        serializers_by_extension={".csv": CsvSerializer(dump_options=CSVDumpOptions(columns=("a",)))},
+        serializers_by_extension={".csv": CsvSerializer(write_options=CsvOptions(columns=('a',)))},
     )
     with pytest.raises(SerializationError, match="含まれない"):
         repository.save("bad.csv", [{"a": 1, "b": 2}])
@@ -237,7 +249,7 @@ def test_csv_alias_follows_model_input_rules(tmp_path):
 
     repository = RowsRepository(
         model=Aliased, base_directory=tmp_path,
-        serializers_by_extension={".csv": CsvSerializer(dump_options=CSVDumpOptions(by_alias=True))},
+        serializers_by_extension={".csv": CsvSerializer(write_options=CsvOptions(by_alias=True))},
     )
     repository.save("alias.csv", [Aliased(identifier=1)])
     assert (tmp_path / "alias.csv").read_text().startswith("id\n")

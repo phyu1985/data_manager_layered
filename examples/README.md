@@ -25,3 +25,17 @@ examplesでは学習のため、モデル定義・組立て・printを近くに�
 追加例の入力はsample_data/extendedの人工データです。extended_formatsは--pandasを省けば基本依存だけで動きます。共有編集例はローカルの動作確認であり、SMBの実機検証を代替しません。
 
 命名と共通I/Fは[FILE_INTERFACES.md](../docs/FILE_INTERFACES.md)を参照してください。例のProjectFilesは用途別の構成をまとめた値であり、モデルごとのServiceクラスを要求するものではありません。
+
+
+CSV設定の全項目・条件とa〜gの例は[CSV設定ガイド](../docs/CSV_OPTIONS.md)を参照してください。
+
+CSVのa〜gはcsv_layouts.pyのsample_a〜sample_gを参照してください。各関数に設定と入出力をまとめ、`python -m examples.csv_layouts outputs/csv-g --pattern g`のように単独実行もできます。
+
+
+AA・AAAの二段形式と末尾空セルは[二段CSVの使い方](../docs/TWO_TABLE_CSV.md)を参照してください。
+
+
+検証の担当と設定APIの整理は[処理と検証の整理](../docs/VALIDATION_FLOW.md)を参照してください。項目宣言型CSVと版変換は`python -m examples.versioned_csv outputs/versioned-csv`で実行できます。
+
+
+JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](../docs/FORMAT_OPTIONS.md)を参照してください。

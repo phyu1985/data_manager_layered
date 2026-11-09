@@ -5,7 +5,12 @@ from typing import Any
 from pydantic import BaseModel
 import pytest
 
-from DataManager import BinaryWaveformSerializer, ConfigurationError, CSVDumpOptions, CsvSerializer, CustomTextSerializer, JSONLLoadOptions, JsonlSerializer, JsonSerializer, ObjectRepository, RowsRepository, SerializationError, WaveformFormatError, WaveformHeader, WaveformOptions, WaveformRepository, YamlSerializer
+from DataManager import (
+    BinaryWaveformSerializer, ConfigurationError, CsvOptions, CsvSerializer,
+    CustomTextSerializer, JSONLLoadOptions, JsonlSerializer, JsonSerializer,
+    ObjectRepository, RowsRepository, SerializationError, WaveformFormatError,
+    WaveformHeader, WaveformOptions, WaveformRepository, YamlSerializer,
+)
 from DataManager.file_io import lock_file
 from DataManager.model_conversion import ModelBinding
 
@@ -124,7 +129,7 @@ def test_empty_recursive_csv_requires_explicit_columns(tmp_path):
 
     configured = RowsRepository(
         model=Node, base_directory=tmp_path,
-        serializers_by_extension={".csv": CsvSerializer(dump_options=CSVDumpOptions(columns=("name",)))},
+        serializers_by_extension={".csv": CsvSerializer(write_options=CsvOptions(columns=('name',)))},
     )
     configured.save("recursive.csv", [])
     assert configured.load("recursive.csv") == []

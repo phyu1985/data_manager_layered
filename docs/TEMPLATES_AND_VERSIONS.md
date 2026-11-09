@@ -76,21 +76,20 @@ existing_textは「今回の保存先の内容」、template_textは「テンプ
 
 FileServiceには通常と同じload/save/save_asを提供します。返却型はdecode_currentの返却型で決まり、metaを型付きで扱うならRowsDocument[Meta, Row]に復元します。CSVの版が文字列ならread_versionで整数へ解釈します。出力版の選択はrepository.for_version(n)です。
 
-Rowsの文書テンプレート機能は設けていません。CSVの境界・列定義はCsvOptions、JSONLのmeta生成はJsonlSerializerが担当します。ブロック形式の列ヘッダーはファイルmetaとは別物であり、版番号の保存位置が定義されていない形式にmeta行を勝手に追加しません。
+Rowsの文書テンプレート機能は設けていません。CSVの列定義はCsvOptions、境界はCsvKeyValueHeaderOptions / CsvHeaderOptions、JSONLのmeta生成はJsonlSerializerが担当します。ブロック形式の列ヘッダーはファイルmetaとは別物であり、版番号の保存位置が定義されていない形式にmeta行を勝手に追加しません。
 
 ## 属性行を持つブロック
 
 BlockRowsFormatは文法と行の境界、BlockRowsSerializerはモデルの対応付けを担当します。平坦な形式とattrsを持つ形式を同じSerializerで扱います。
 
 ```python
-columns = (
-    ("name", "ch", "start", "length"),
-    *(("name", "value", "start", "length"),) * 8,
-    ("start_mm", "length_mm"),
-)
 options = BlockRowsOptions(
-    delimiter=",", columns=columns,
-    row_targets=(None,) + ("attrs",) * 8 + (None,),
+    delimiter=",",
+    rows=(
+        BlockRow.root("name", "ch", "start", "length"),
+        *(BlockRow.items("attrs", "name", "value", "start", "length") for _ in range(8)),
+        BlockRow.root("start_mm", "length_mm"),
+    ),
 )
 repository = RowsRepository(
     model=BlockModel, base_directory=Path("data"),
@@ -102,15 +101,15 @@ models = file.load()
 
 | 設定           | 役割                                                               |
 | -------------- | ------------------------------------------------------------------ |
-| columns        | 各行の値を復元するモデルのキー。指定時は入力の列名を位置で置換する |
-| row_targets    | Noneならモデル直下、名前を指定するとその一覧へ一行ずつ追加する     |
-| header_columns | 保存する見出しを別名にする場合だけ指定する。省略時はcolumnsを使う  |
+| BlockRowのcolumns | 各行の値を復元するモデルのキー。root / itemsの引数で指定 |
+| root / items | モデル直下、または指定した一覧へ一行ずつ対応付ける |
+| BlockRowのheader | 保存する見出しが異なる行だけで指定。省略時はcolumnsを使う |
 
 属性行のstart/lengthは各属性の辞書へ入ります。同じ行の重複、モデル直下のキー同士・一覧名との衝突は拒否します。例ではattrsに対応する行が8本あるため、保存時のattrsも8件を要求します。別の件数や複数の一覧も同じ指定方法で扱えます。途中の属性行を増減して黙って補正することはありません。
 
-ファイル上の見出しがinfo_name1/info_value1でも、columnsをname/valueに置換して復元できます。元の見出し名で保存する場合はheader_columnsにファイル上の列名を指定します。詳細はexamples/versioned_files.pyのblocks_exampleを参照してください。
+ファイル上の見出しがinfo_name1/info_value1でも、columnsをname/valueに置換して復元できます。元の見出し名で保存する場合は各BlockRowのheaderにファイル上の列名を指定します。詳細はexamples/versioned_files.pyのblocks_exampleを参照してください。
 
-AttributeBlockSerializerは移行用ファクトリーとして残し、BlockRowsSerializerを構成して返します。新規の呼出と例は統合先へ揃えています。ゼロ件の一覧には対応するデータ行がないため、この旧窓口は1件以上を指定します。データ行を持たない0件の一覧を宣言する機能は現在のrow_targetsにはありません。
+AttributeBlockSerializerは移行用ファクトリーとして残し、BlockRowsSerializerを構成して返します。新規の呼出と例は統合先へ揃えています。ゼロ件の一覧には対応するデータ行がないため、この旧窓口は1件以上を指定します。データ行を持たない0件の一覧を宣言する機能は現在の行定義にはありません。
 
 ## V3以前の作成フラグ
 

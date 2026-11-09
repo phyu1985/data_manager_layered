@@ -4,9 +4,7 @@ import argparse
 from pathlib import Path
 
 
-from DataManager import (
-    BlockRowsSerializer, BlockRowsOptions, FileService, ObjectRepository, RowsRepository,
-)
+from DataManager import BlockRow, BlockRowsSerializer, BlockRowsOptions, FileService, ObjectRepository, RowsRepository
 from DataManager.settings_versions import SettingsDocument, create_settings_repository
 from Domain.models import Settings
 from examples.extended_formats import Attribute, BlockModel
@@ -60,20 +58,16 @@ def yaml_example(directory: Path):
 def blocks_example(directory: Path):
     """ 同名列を属性の所属先へ分け、8行固定のまま読み書きする。
     """
-    # このモデルではaxis_mmを使う。columnsで保存先のキー名を明示できる。
-    columns = (
-        ("name", "ch", "start", "length"),
-        *(("name", "value", "start", "length"),) * 8,
-        ("axis_mm", "length_mm"),
-    )
-    header_columns = (
-        columns[0],
-        *((f"info_name{i + 1}", f"info_value{i + 1}", "start", "length") for i in range(8)),
-        columns[-1],
-    )
     serializer = BlockRowsSerializer(options=BlockRowsOptions(
-        delimiter=",", columns=columns, header_columns=header_columns,
-        row_targets=(None,) + ("attrs",) * 8 + (None,),
+        delimiter=",",
+        rows=(
+            BlockRow.root("name", "ch", "start", "length"),
+            *(BlockRow.items(
+                "attrs", "name", "value", "start", "length",
+                header=(f"info_name{i + 1}", f"info_value{i + 1}", "start", "length"),
+            ) for i in range(8)),
+            BlockRow.root("axis_mm", "length_mm"),
+        ),
     ))
     repository = RowsRepository(
         model=BlockModel, base_directory=directory, serializers_by_extension={".txt": serializer},

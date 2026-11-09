@@ -127,7 +127,7 @@ class CaptureCsvFormat:
         second_meta = {**second_meta, "channel_count": channel_count}
         binding = ModelBinding[dict[str, Any]](dict)
         first = CsvSerializer().loads(self._text(first_cells), binding)
-        second = CsvSerializer(options=CsvOptions(has_header=False, columns=channels)).loads(self._text(records[index:]), binding)
+        second = CsvSerializer(options=CsvOptions(header=False, columns=channels)).loads(self._text(records[index:]), binding)
         return RowsDocument(first_meta, first), RowsDocument(second_meta, second)
 
     @staticmethod
@@ -148,7 +148,7 @@ class CaptureCsvFormat:
         channels = tuple(f"channel_{i + 1}" for i in range(count))
         binding = ModelBinding[dict[str, Any]](dict)
         first_text = CsvSerializer(options=CsvOptions(columns=("time", "value"))).dumps(first.rows, binding)
-        second_text = CsvSerializer(options=CsvOptions(include_header=False, columns=channels)).dumps(second.rows, binding)
+        second_text = CsvSerializer(options=CsvOptions(header=False, columns=channels)).dumps(second.rows, binding)
         first_meta = {**first.metadata, "number": len(first.rows)}
         second_meta = {key: value for key, value in second.metadata.items() if key != "channel_count"}
         second_meta["number"] = len(second.rows)

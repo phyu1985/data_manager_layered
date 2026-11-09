@@ -8,8 +8,10 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
-    BlockRowsOptions, BlockRowsSerializer, CsvOptions, CsvSerializer, KvOptions, KvSerializer,
-    FileReader, FileService, ObjectRepository, RowsDocument, RowsRepository, Storage, VersionConverter, VersionedRowsRepository,
+    BlockRow, BlockRowsOptions, BlockRowsSerializer, CsvOptions, CsvSerializer,
+    KvOptions, KvSerializer, FileReader, FileService,
+    ObjectRepository, RowsDocument, RowsRepository, Storage,
+    VersionConverter, VersionedRowsRepository, CsvHeaderOptions, CsvHeaderField,
 )
 from DataManager.serializers.sample_capture import CaptureCsvFileSerializer, CaptureSectionSerializer, PositionalCaptureSerializer
 
@@ -104,9 +106,7 @@ def run(output: Path, *, include_pandas: bool = False):
 
     legacy_kv = ObjectRepository(
         model=Settings, base_directory=SAMPLES,
-        serializers_by_extension={".txt": KvSerializer(options=KvOptions(
-            header_skip=1, header_keys=("saved_at", "version", "saved_path"),
-        ))},
+        serializers_by_extension={".txt": KvSerializer(options=KvOptions().with_value_header(("saved_at", "version", "saved_path"), skip=1))},
     )
     settings = legacy_kv.load("header_kv.txt")
     normalized = ObjectRepository(model=Settings, base_directory=output)
@@ -114,10 +114,12 @@ def run(output: Path, *, include_pandas: bool = False):
     assert normalized.load("settings.txt") == settings
     assert not (output / "settings.txt").read_text(encoding="utf-8").startswith("#")
 
-    csv = CsvSerializer(options=CsvOptions(
-        boundary="blank_line", metadata_layout="values", metadata_keys=("version", "device"),
-        columns=("time", "reading"),
-    ))
+    csv = CsvSerializer(
+        options=CsvOptions(columns=("time", "reading")),
+        metadata=CsvHeaderOptions(fields=(
+            CsvHeaderField.value_only('version'), CsvHeaderField.value_only('device'),
+        )),
+    )
     raw_repository = RowsRepository[dict[str, Any]](
         model=dict, base_directory=SAMPLES, serializers_by_extension={".csv": csv},
     )
@@ -138,7 +140,7 @@ def run(output: Path, *, include_pandas: bool = False):
     legacy_file.save(current)
     assert legacy_file.load() == current
 
-    options = BlockRowsOptions(columns=(("name", "value"), ("unit", "status")))
+    options = BlockRowsOptions(rows=(BlockRow.root("name", "value"), BlockRow.root("unit", "status")))
     block_serializer = BlockRowsSerializer(options=options)
     records = RowsRepository(model=Record, base_directory=SAMPLES, serializers_by_extension={".txt": block_serializer}).load("multiline_records.txt")
     block_output = RowsRepository(model=Record, base_directory=output, serializers_by_extension={".txt": block_serializer})

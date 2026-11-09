@@ -31,6 +31,13 @@ class YamlDumpOptions:
     indent_offset: int = 2
     footer_fields: tuple[str, ...] = ()
 
+    def __post_init__(self):
+        """ 出力フィールドの静的な指定だけを、設定生成時に確認する。
+        """
+        footer_fields = self.footer_fields
+        if any(not name.strip() for name in footer_fields) or len(set(footer_fields)) != len(footer_fields):
+            raise ConfigurationError("footer_fieldsは空欄・重複のないフィールド名で指定してください")
+
 
 class YamlSerializer:
     """ テンプレート・既存文書・値を重ね、YAMLを読み書きする。
@@ -41,9 +48,6 @@ class YamlSerializer:
 
     def __init__(self, *, dump_options: YamlDumpOptions | None = None):
         self._dump_options = dump_options or YamlDumpOptions()
-        footer_fields = self._dump_options.footer_fields
-        if any(not name.strip() for name in footer_fields) or len(set(footer_fields)) != len(footer_fields):
-            raise ConfigurationError("footer_fieldsは空欄・重複のないフィールド名で指定してください")
 
     @property
     def encoding(self) -> str:

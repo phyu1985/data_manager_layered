@@ -1,0 +1,10 @@
+# id
+# attribute_1;value_1
+# attribute_2;value_2
+# length
+#
+1
+a;1.0
+b;2.0
+10.0
+#

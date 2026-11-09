@@ -1,0 +1,13 @@
+version0
+count:      2
+#id, name, value
+1,taro,3,
+2,jiro,4,
+
+number: 5
+#index, name, position
+0, hoge, 32,
+1, fuga, 12,
+2, foo, 33,
+3, bus, 36,
+4, bar, 99,

@@ -12,7 +12,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_fie
 import portalocker
 import pytest
 
-from DataManager import ConfigurationError, JSONLDumpOptions, JSONLLoadOptions, JsonDumpOptions, JsonlSerializer, JsonSerializer, ObjectRepository, RowsRepository, SerializationError
+from DataManager import (
+    ConfigurationError, JSONLDumpOptions, JSONLLoadOptions, JsonDumpOptions,
+    JsonlSerializer, JsonSerializer, ObjectRepository, RowsRepository,
+    SerializationError,
+)
 from DataManager.file_io import lock_file
 
 
@@ -211,7 +215,7 @@ def test_duplicate_names_need_explicit_fixed_tags(tmp_path):
         RowsRepository[BaseModel](model=(first, second), base_directory=tmp_path)
     repository = RowsRepository[BaseModel](
         model=(first, second), base_directory=tmp_path,
-        serializers_by_extension={".jsonl": JsonlSerializer(model_tags={first: "first", second: "second"})},
+        serializers_by_extension={".jsonl": JsonlSerializer.for_models(model_tags={first: 'first', second: 'second'})},
     )
     repository.save("names.jsonl", [first(x=1), second(y="a")])
     assert [type(row) for row in repository.load("names.jsonl")] == [first, second]
@@ -220,7 +224,7 @@ def test_duplicate_names_need_explicit_fixed_tags(tmp_path):
 def test_fixed_tag_survives_class_rename(tmp_path):
     old = RowsRepository(
         model=User, base_directory=tmp_path,
-        serializers_by_extension={".jsonl": JsonlSerializer(model_tags={User: "user"})},
+        serializers_by_extension={".jsonl": JsonlSerializer.for_models(model_tags={User: 'user'})},
     )
     old.save("users.jsonl", [User(id="u")])
 
@@ -230,7 +234,7 @@ def test_fixed_tag_survives_class_rename(tmp_path):
 
     new = RowsRepository(
         model=RenamedUser, base_directory=tmp_path,
-        serializers_by_extension={".jsonl": JsonlSerializer(model_tags={RenamedUser: "user"})},
+        serializers_by_extension={".jsonl": JsonlSerializer.for_models(model_tags={RenamedUser: 'user'})},
     )
     assert type(new.load("users.jsonl")[0]) is RenamedUser
 

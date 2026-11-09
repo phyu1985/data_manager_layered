@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from DataManager import BlockRowsOptions, BlockRowsSerializer, CsvOptions, CsvSerializer, RowsDocument, RowsRepository
+from DataManager import BlockRow, BlockRowsOptions, BlockRowsSerializer, CsvOptions, CsvSerializer, RowsDocument, RowsRepository, CsvKeyValueHeaderOptions
 
 
 class Reading(BaseModel):
@@ -18,13 +18,13 @@ class Reading(BaseModel):
 
 def run(directory: Path):
     directory.mkdir(parents=True, exist_ok=False)
-    csv = CsvSerializer(options=CsvOptions(
-        delimiter=" ", boundary="marker", marker="[data]",
-        metadata_separator=":", metadata_multiple=True,
-    ))
+    csv = CsvSerializer(
+        options=CsvOptions(delimiter=" "),
+        metadata=CsvKeyValueHeaderOptions.until_marker("[data]").as_text(multiple=True),
+    )
     blocks = BlockRowsSerializer(options=BlockRowsOptions(
-        delimiter=" ", columns=(("name", "value"),),
-        metadata_marker="[columns]", metadata_separator=":", metadata_multiple=True,
+        delimiter=" ", rows=(BlockRow.root("name", "value"),),
+        metadata=CsvKeyValueHeaderOptions.until_marker("[columns]").as_text(multiple=True),
     ))
     repository = RowsRepository(
         model=Reading, base_directory=directory,

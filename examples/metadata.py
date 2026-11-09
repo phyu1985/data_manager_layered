@@ -5,10 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from DataManager import (
-    CsvOptions, CsvSerializer, JsonlSerializer, RowsDocument,
-    FileService, RowsDocumentRepository, RowsRepository,
-)
+from DataManager import CsvKeyValueHeaderOptions, CsvSerializer, JsonlSerializer, RowsDocument, FileService, RowsDocumentRepository, RowsRepository
 
 
 class FileMetadata(BaseModel):
@@ -39,9 +36,9 @@ def run(output_directory: Path):
         rows=[Measurement(time=0, value=1.2), Measurement(time=1, value=1.5)],
     )
     csv_formats = {
-        "blank.csv": CsvOptions(boundary="blank_line"),
-        "marker.csv": CsvOptions(boundary="marker", marker="[data]"),
-        "fixed.csv": CsvOptions(boundary="fixed_rows", row_count=2),
+        "blank.csv": CsvKeyValueHeaderOptions.until_blank_line(),
+        "marker.csv": CsvKeyValueHeaderOptions.until_marker('[data]'),
+        "fixed.csv": CsvKeyValueHeaderOptions.fixed_rows(2),
     }
 
     # 区切りの差はSerializerの構成へ閉じ込める。保存・読込の呼び方は変えない。
@@ -49,7 +46,7 @@ def run(output_directory: Path):
         repository = RowsRepository(
             model=Measurement, base_directory=output_directory,
             serializers_by_extension={
-                ".csv": CsvSerializer(options=csv_formats.get(filename)),
+                ".csv": CsvSerializer(metadata=csv_formats.get(filename)),
                 ".jsonl": JsonlSerializer(),
             },
         )

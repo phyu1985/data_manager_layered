@@ -33,6 +33,12 @@ class JSONLLoadOptions:
 
     metadata: Literal["required", "absent"] = "required"
 
+    def __post_init__(self):
+        """ 外部JSONLと内部形式の選択を設定生成時に確定する。
+        """
+        if self.metadata not in ("required", "absent"):
+            raise ConfigurationError("metadataはrequiredまたはabsentを指定してください")
+
 
 class JsonlSerializer:
     """ 一覧とJSONLを相互変換する。混在モデルだけ本文に平坦なtagキーを持つ。
@@ -43,8 +49,6 @@ class JsonlSerializer:
 
     def __init__(
         self, *, tag_field: str = "type",
-        model_tags: Mapping[type[BaseModel], str] | None = None,
-        document_models: Sequence[str] | None = None,
         dump_options: JSONLDumpOptions | None = None, load_options: JSONLLoadOptions | None = None,
     ):
         """ tagのキー名・固定名と、形式専用の読み書き設定を保持する。
@@ -53,20 +57,42 @@ class JsonlSerializer:
         if not tag_field.strip():
             raise ConfigurationError("tag_fieldは空白以外の文字を含む必要があります")
 
-        if isinstance(document_models, str):
-            raise ConfigurationError("document_modelsには文字列一つではなく型名の一覧を指定してください")
-        self._document_models = tuple(document_models) if document_models is not None else None
-        if self._document_models is not None and (not self._document_models or any(not name.strip() for name in self._document_models)
-                                                 or len(set(self._document_models)) != len(self._document_models)):
-            raise ConfigurationError("document_modelsは空欄・重複のない型名の一覧です")
         self._tag_field = tag_field
-        self._model_tags: dict[type[object], str] = {
-            model_class: tag for model_class, tag in (model_tags or {}).items()
-        }
+        self._model_tags: dict[type[object], str] = {}
+        self._document_models: tuple[str, ...] | None = None
         self._dump_options = dump_options or JSONLDumpOptions()
         self._load_options = load_options or JSONLLoadOptions()
-        if self._load_options.metadata not in ("required", "absent"):
-            raise ConfigurationError("metadataはrequiredまたはabsentを指定してください")
+
+    @classmethod
+    def for_models(
+        cls, *, model_tags: Mapping[type[BaseModel], str], tag_field: str = "type",
+        dump_options: JSONLDumpOptions | None = None, load_options: JSONLLoadOptions | None = None,
+    ) -> JsonlSerializer:
+        """ 通常のモデルへ固定tagを与える。復元可能なモデルとの照合は接続時に行う。
+        """
+        tags = tuple(model_tags.values())
+        if not tags or any(not tag.strip() for tag in tags) or len(set(tags)) != len(tags):
+            raise ConfigurationError("model_tagsは空欄・重複のない固定名の対応表です")
+        serializer = cls(tag_field=tag_field, dump_options=dump_options, load_options=load_options)
+        for model_class, tag in model_tags.items():
+            serializer._model_tags[model_class] = tag
+        return serializer
+
+    @classmethod
+    def for_dict(
+        cls, *, document_models: Sequence[str] | None = None,
+        dump_options: JSONLDumpOptions | None = None, load_options: JSONLLoadOptions | None = None,
+    ) -> JsonlSerializer:
+        """ 版変換前のdict文書を選ぶ。指定した固定名は型情報へ記録し、モデル生成は行わない。
+        """
+        if isinstance(document_models, str):
+            raise ConfigurationError("document_modelsには固定名の一覧を指定してください")
+        names = tuple(document_models) if document_models is not None else ()
+        if document_models is not None and (not names or any(not name.strip() for name in names) or len(set(names)) != len(names)):
+            raise ConfigurationError("document_modelsは空欄・重複のない型名の一覧です")
+        serializer = cls(dump_options=dump_options, load_options=load_options)
+        serializer._document_models = names
+        return serializer
 
     @property
     def encoding(self) -> str:
@@ -78,25 +104,23 @@ class JsonlSerializer:
         """ 指定されたモデルで、このSerializerの設定を使えるか確認する。
         """
         # 対応表の構築で未指定の型・重複・衝突を検出する。共有状態へのキャッシュはしない。
-        self._build_models_by_tag(model_binding)
+        self._prepare_models(model_binding)
 
-    def _build_models_by_tag(self, model_binding: ModelBinding[ModelValue]) -> dict[str, type[ModelValue]]:
+    def _prepare_models(self, model_binding: ModelBinding[ModelValue]) -> dict[str, type[ModelValue]]:
         """ 型名から許可済みクラスを選ぶための対応表を返す。
         """
-        if self._document_models is not None and model_binding.data_mode != "dict":
-            raise ConfigurationError("document_modelsは版変換前のdict入出力用です。通常モデルはmodel_tagsを使います")
+        if model_binding.data_mode == "dict":
+            if self._model_tags:
+                raise ConfigurationError("dictにはmodel_tagsを指定できません。for_dictで文書の固定名を指定してください")
+            return {}
 
-        # 固定tagの指定が、Repositoryで許可していないクラスを持ち込まないようにする。
-        if any(
-            model_class not in model_binding.model_classes
-            for model_class in self._model_tags
-        ):
+        # dict文書の識別名と、実際の行モデルのtagは同時に設定しない。
+        if self._document_models is not None:
+            raise ConfigurationError("for_dictはdict用です。行モデルにはfor_modelsを使用してください")
+        if any(model_class not in model_binding.model_classes for model_class in self._model_tags):
             raise ConfigurationError("model_tagsに未指定のモデルが含まれています")
 
         models_by_tag: dict[str, type[ModelValue]] = {}
-
-        if model_binding.data_mode == "dict":
-            return models_by_tag
 
         # 長期保存用の固定名を優先し、省略された型だけクラス名を使う。
         for model_class in model_binding.model_classes:
@@ -134,10 +158,11 @@ class JsonlSerializer:
                 if self._tag_field in (field_name, output_name):
                     raise ConfigurationError(f"{model_class.__name__}.{field_name}と" f"tagキー{self._tag_field!r}が衝突します")
 
-    def _build_metadata(self, model_binding: ModelBinding[ModelValue]) -> dict[str, Any]:
-        """ ファイルの用途を照合するためのメタ情報を作る。
+    def _build_metadata(
+        self, model_binding: ModelBinding[ModelValue], models_by_tag: Mapping[str, type[ModelValue]],
+    ) -> dict[str, Any]:
+        """ 確定済みのモデル対応から、ファイル形式の照合情報を作る。
         """
-        models_by_tag = self._build_models_by_tag(model_binding)
         # 型を指定した順序だけでメタの不一致にならないよう、型名は並べ替えて記録する。
         metadata: dict[str, Any] = {
             "schema_version": 1,
@@ -156,7 +181,16 @@ class JsonlSerializer:
     ) -> str:
         """ 全件保存と新規追記に使う、改行付きのメタ行を返す。
         """
-        format_metadata = self._build_metadata(model_binding)
+        models = self._prepare_models(model_binding)
+        return self._metadata_line(model_binding, models, metadata)
+
+    def _metadata_line(
+        self, model_binding: ModelBinding[ModelValue], models: Mapping[str, type[ModelValue]],
+        metadata: dict[str, Any] | None,
+    ) -> str:
+        """ 全件保存と追記に共通のメタ行を作る。モデル対応はここでは再構築しない。
+        """
+        format_metadata = self._build_metadata(model_binding, models)
         metadata_record: dict[str, Any] = {"__meta__": format_metadata}
         # 型の照合情報と利用者の値は、同じ行の別項目に置く。版や業務キーの衝突を避ける。
         if metadata is not None:
@@ -176,8 +210,17 @@ class JsonlSerializer:
     ) -> dict[str, Any]:
         """ メタ行の構造と内容が、指定モデル・形式に一致するか確認する。
         """
+        models = self._prepare_models(model_binding)
+        return self._read_metadata(serialized_text, model_binding, models)
+
+    def _read_metadata(
+        self, serialized_text: str, model_binding: ModelBinding[ModelValue],
+        models: Mapping[str, type[ModelValue]],
+    ) -> dict[str, Any]:
+        """ 入力のメタ行を照合し、利用者の値を形式情報と分けて返す。
+        """
         metadata_record = parse_json_object(serialized_text)
-        expected_metadata = self._build_metadata(model_binding)
+        expected_metadata = self._build_metadata(model_binding, models)
         if "metadata" in metadata_record:
             expected_metadata["schema_version"] = 2
         parsed_metadata = metadata_record.get("__meta__")
@@ -204,7 +247,15 @@ class JsonlSerializer:
     def serialize_data_lines(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
         """ 全件保存・追記に使う、メタ行を含まない本文を返す。
         """
-        models_by_tag = self._build_models_by_tag(model_binding)
+        models = self._prepare_models(model_binding)
+        return self._data_lines(rows, model_binding, models)
+
+    def _data_lines(
+        self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue],
+        models_by_tag: Mapping[str, type[ModelValue]],
+    ) -> str:
+        """ 確定した対応表を全行で共有し、tagの追加とJSON生成へ進む。
+        """
         # 読み込み用のtag→モデル表を、保存時に必要なモデル→tag表へ反転する。
         tags_by_model = {
             model_class: tag for tag, model_class in models_by_tag.items()
@@ -233,8 +284,9 @@ class JsonlSerializer:
         """ メタ行を含むJSONL全体を、改行付き文字列として返す。
         """
         # 全件置換では古いメタ行も消えるため、ファイルの有無によらず毎回生成する。
-        metadata_line = self.serialize_metadata_line(model_binding)
-        data_lines = self.serialize_data_lines(rows, model_binding)
+        models = self._prepare_models(model_binding)
+        metadata_line = self._metadata_line(model_binding, models, None)
+        data_lines = self._data_lines(rows, model_binding, models)
 
         return metadata_line + data_lines
 
@@ -247,13 +299,20 @@ class JsonlSerializer:
         if self._load_options.metadata == "absent":
             raise ConfigurationError("利用者メタ付きJSONLにはmetadata='required'を使用してください")
 
-        return (
-            self.serialize_metadata_line(model_binding, metadata=metadata)
-            + self.serialize_data_lines(rows, model_binding)
-        )
+        models = self._prepare_models(model_binding)
+        return self._metadata_line(model_binding, models, metadata) + self._data_lines(rows, model_binding, models)
 
     def deserialize_data_line(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> ModelValue:
         """ 本文1行から、指定型のモデルまたはdictを復元する。
+        """
+        models = self._prepare_models(model_binding)
+        return self._read_data_line(serialized_text, model_binding, models)
+
+    def _read_data_line(
+        self, serialized_text: str, model_binding: ModelBinding[ModelValue],
+        models_by_tag: Mapping[str, type[ModelValue]],
+    ) -> ModelValue:
+        """ 一行の型を選んで復元する。対応表は文書の先頭で確定済み。
         """
         data = parse_json_object(serialized_text)
 
@@ -262,8 +321,6 @@ class JsonlSerializer:
 
         # tagは保存形式の情報なので、モデルのフィールド検証へ渡す前に取り除く。
         tag = data.pop(self._tag_field, None)
-        models_by_tag = self._build_models_by_tag(model_binding)
-
         if not isinstance(tag, str) or tag not in models_by_tag:
             raise SerializationError(f"JSONLの型名が未指定または未登録です: {tag!r}")
 
@@ -283,6 +340,8 @@ class JsonlSerializer:
         if self._load_options.metadata == "absent" and model_binding.data_mode == "mixed":
             raise ConfigurationError("混在JSONLはメタ行が必要です")
 
+        # メタ照合と全行の復元は、操作内で一度確定した対応表を使う。
+        models = self._prepare_models(model_binding)
         # 空白行を除いても、検証エラーにファイル上の行番号を付けられるよう元の番号を残す。
         numbered_lines = (
             (line_number, line)
@@ -298,13 +357,13 @@ class JsonlSerializer:
             if first_line is None:
                 raise SerializationError("JSONLにメタ行がありません")
 
-            metadata = self.deserialize_metadata_line(first_line[1], model_binding)
+            metadata = self._read_metadata(first_line[1], model_binding, models)
 
         # 先頭の形式検証を終えたら、本文だけを行単位で復元する。
         restored_values: list[ModelValue] = []
         for line_number, line in numbered_lines:
             try:
-                restored_values.append(self.deserialize_data_line(line, model_binding))
+                restored_values.append(self._read_data_line(line, model_binding, models))
             except (SerializationError, ValidationError) as error:
                 raise SerializationError(f"JSONL行{line_number}: {error}") from error
 

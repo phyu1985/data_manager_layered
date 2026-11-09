@@ -5,7 +5,7 @@
 ```python
 from pathlib import Path
 from DataManager import (
-    CsvOptions, CsvSerializer, JsonlSerializer, FileService, RowsDocumentRepository,
+    CsvKeyValueHeaderOptions, CsvSerializer, JsonlSerializer, FileService, RowsDocumentRepository,
     RowsDocument, RowsRepository,
 )
 from examples.metadata import FileMetadata, Measurement
@@ -14,7 +14,7 @@ repository = RowsRepository(
     model=Measurement,
     base_directory=Path("data"),
     serializers_by_extension={
-        ".csv": CsvSerializer(options=CsvOptions(boundary="blank_line")),
+        ".csv": CsvSerializer(metadata=CsvKeyValueHeaderOptions.until_blank_line()),
         ".jsonl": JsonlSerializer(),
     },
 )
@@ -43,9 +43,9 @@ metaの業務項目をRepositoryは知りません。`metadata_model`を省略�
 
 | 規則 | 設定 | 境界の扱い |
 |---|---|---|
-| 空行 | `CsvOptions(boundary="blank_line")` | 空のCSVレコード1件を境界にする |
-| マーカー | `CsvOptions(boundary="marker", marker="[data]")` | 指定文字列だけの1セルのレコードを境界にする |
-| 固定件数 | `CsvOptions(boundary="fixed_rows", row_count=2)` | 先頭2レコードがメタ。境界用レコードはない |
+| 空行 | `CsvKeyValueHeaderOptions.until_blank_line()` | 空のCSVレコード1件を境界にする |
+| マーカー | `CsvKeyValueHeaderOptions.until_marker("[data]")` | 指定文字列だけの1セルのレコードを境界にする |
+| 固定件数 | `CsvKeyValueHeaderOptions.fixed_rows(2)` | 先頭2レコードがメタ。境界用レコードはない |
 
 空行の例です。
 
@@ -61,7 +61,7 @@ time,value
 
 「行」はCSVの論理レコードです。引用符内の改行は値の一部であり、空行や追加のメタとして数えません。`[data],something`は2セルなのでマーカーではありません。引用符付きの空文字1セルや、空白文字のある行も空レコードとは区別します。改行文字の数で固定バイト位置を求める形式は対象外です。
 
-メタは重複のない非空キーと単一値の2列です。辞書・配列の暗黙の文字列化はせずエラーにします。書込順序は辞書・モデルの出力順です。CSVでは値は文字列として記録され、辞書での読込は`"001"`もそのまま保持します。型の復元には`metadata_model`を使います。空の値は既定でNone、保持するなら`CsvOptions(boundary="blank_line", metadata_empty_as_none=False)`にします。本文の空欄や見出しも同じCsvOptionsで指定します。値だけのヘッダ・列名置換は[拡張形式ガイド](EXTENSION_GUIDE.md)を参照してください。
+メタは重複のない非空キーと単一値の2列です。辞書・配列の暗黙の文字列化はせずエラーにします。書込順序は辞書・モデルの出力順です。CSVでは値は文字列として記録され、辞書での読込は`"001"`もそのまま保持します。型の復元には`metadata_model`を使います。空の値は既定でNone、保持するなら`CsvKeyValueHeaderOptions.until_blank_line(empty_as_none=False)`にします。本文の空欄や見出しは別のCsvOptionsで指定します。値だけのヘッダ・列名置換は[拡張形式ガイド](EXTENSION_GUIDE.md)を参照してください。
 
 モデルの別名でメタキーを保存する場合は`save_document(..., metadata_by_alias=True)`を指定します。読取時のalias受入方針はモデルに従い、Serializer側で補正しません。
 
@@ -94,3 +94,9 @@ time,value
 
 
 追加ヘッダ・半角スペース区切り・modelsの設定と単独の版変換例は、[ヘッダと版変換の実行例](HEADERS_AND_SAMPLES.md)を参照してください。
+
+
+CSV設定の全項目・条件とa〜gの例は[CSV設定ガイド](CSV_OPTIONS.md)を参照してください。
+
+
+JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](FORMAT_OPTIONS.md)を参照してください。

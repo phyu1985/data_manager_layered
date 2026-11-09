@@ -1,12 +1,12 @@
 # 拡張形式・版互換・共有編集権をつなぐ
 
-この改修は、2026-11-05までの合意を反映しています。KV・独自テキストの元の説明コメントや配置の保持は対象外です。未提示の入力文法は人工データで具体化してあり、社内ファイルの実仕様を実装済みという意味ではありません。
+この改修は、2026-11-09までの合意を反映しています。KV・独自テキストの元の説明コメントや配置の保持は対象外です。未提示の入力文法は人工データで具体化してあり、社内ファイルの実仕様を実装済みという意味ではありません。
 
 ## どこに処理を足すか
 
 | 変更の理由 | 担当・実装 |
 |---|---|
-| CSVの基本的な読書き規則 | `CsvOptions` / `serializers/csv.py` |
+| CSVの基本的な読書き規則 | `CsvOptions` / `serializers/csv_options.py` |
 | コメントヘッダ・キーと値 | `KvOptions` / `serializers/kv.py` |
 | 複数行で一レコード | `BlockRowsSerializer` / `serializers/block_rows.py` |
 | 対象固有の構造・マーカー・列数計算 | 専用Serializer。架空例は`serializers/sample_capture.py` |
@@ -27,25 +27,23 @@ flowchart LR
     E --> G[必要ならDataFrameへ]
 ```
 
-## CSVの公開設定は一つ
+## CSVの本文と固定ヘッダを構成する
 
 ```python
-from DataManager import CsvOptions, CsvSerializer
+from DataManager import CsvOptions, CsvHeaderOptions, CsvHeaderField, CsvSerializer
 
-serializer = CsvSerializer(options=CsvOptions(
-    boundary="blank_line",
-    metadata_layout="values",
-    metadata_keys=("version", "device"),
-    has_header=True,
-    columns=("time", "reading"),
-))
+serializer = CsvSerializer(
+    options=CsvOptions(columns=("time", "reading")),
+    metadata=CsvHeaderOptions(fields=(
+        CsvHeaderField("version", separator=None),
+        CsvHeaderField("device", separator=None),
+    )),
+)
 ```
 
-先頭の値だけの2レコードへversion/deviceという名前を与えます。本文の列名行は消費したうえで、指定したtime/readingへ置き換えます。列名行がなければhas_header=Falseにします。列の数の不一致・重複・欠落はエラーです。
+先頭2レコードの値へversion/deviceという名前を与えます。本文の見出しは消費し、指定したtime/readingへ置き換えます。列名がない場合はCsvOptions(header=False, columns=(...))を使います。置換時はファイル見出しの件数ではなく、本文のセル数と指定名を照合します。
 
-境界はblank_line / marker / fixed_rowsです。valuesモードの固定件数はmetadata_keysから件数を決められます。キー付きメタは既定のmetadata_layout="key_value"を使います。CSVのレコードは引用符内の改行を含めて解釈し、物理的な改行の数で区切りません。
-
-新規コードはoptionsだけを使います。以前のCSVDumpOptions / CSVLoadOptions / CSVMetadataOptionsは移行用の同一型の別名です。旧コンストラクタ引数も受け付けますが、内部設定はCsvOptions一つへ揃えています。
+ヘッダの各項目はCsvHeaderField、項目宣言のないkey-valueメタはCsvKeyValueHeaderOptionsへ分けました。旧CSVDumpOptions / CSVLoadOptions / CSVMetadataOptionsと旧コンストラクタ引数は廃止しています。全項目の条件とa〜gの実例は[CSV設定ガイド](CSV_OPTIONS.md)を参照してください。
 
 ## KVは識別行を持たない
 
@@ -53,14 +51,12 @@ serializer = CsvSerializer(options=CsvOptions(
 from DataManager import KvOptions, KvSerializer
 
 reader = KvSerializer(options=KvOptions(
-    header_skip=1,
-    header_keys=("saved_at", "version", "saved_path"),
     comment_prefixes=("#", ";"),
     key_value_separator=":",
-))
+).with_value_header(("saved_at", "version", "saved_path"), skip=1))
 ```
 
-先頭のコメント群から、説明1件を飛ばして日時・版・保存先を取得します。ヘッダ自体がキー付きならheader_layout="key_value"を指定し、header_keysは不要です。日時やパスのコロンは分割しません。本文のキーと値の区切りには空白も指定できます。行末コメントは二重引用符の外側で空白の後に始まる記号だけを対象にします。値そのものの記号は引用符で保護します。
+先頭のコメント群から、説明1件を飛ばして日時・版・保存先を取得します。ヘッダ自体がキー付きならwith_key_value_header(skip=1)を指定し、キー一覧は渡しません。日時やパスのコロンは分割しません。本文のキーと値の区切りには空白も指定できます。行末コメントは二重引用符の外側で空白の後に始まる記号だけを対象にします。値そのものの記号は引用符で保護します。
 
 保存用の識別行は出力・要求しません。通常保存は既定のKvSerializerでkey:JSON値へ揃え、文字列・数値・Noneの型を維持します。業務項目のversionは通常の値として残ります。ヘッダ抽出や空白区切りを指定した入力専用設定での保存はエラーにし、標準出力用のRepositoryへ渡すことを明示します。元の自由コメント・ヘッダ配置の書式保持は行いません。
 
@@ -76,7 +72,7 @@ reader = KvSerializer(options=KvOptions(
 
 キーなし空白区切りの架空例はPositionalCaptureSerializerです。構造を辞書へ戻す読取専用の例で、標準KV/JSONへ出す場合は別の出力Repositoryを使います。
 
-属性行の同名キーをattrsへまとめる形式もBlockRowsSerializerを使います。row_targetsで各行の所属先を指定し、columnsで復元先のキー名を与えます。[属性ブロックと版変換の例](TEMPLATES_AND_VERSIONS.md)を参照してください。
+属性行の同名キーをattrsへまとめる形式もBlockRowsSerializerを使います。BlockRow.root / itemsで所属先と復元先のキーを一行単位に宣言します。[属性ブロックと版変換の例](TEMPLATES_AND_VERSIONS.md)を参照してください。
 
 ## Rowsの版変換
 

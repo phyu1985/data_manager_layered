@@ -2,7 +2,8 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 import json
 from typing import Any, Literal
 
@@ -16,18 +17,67 @@ from DataManager.serializers.json import parse_json_value
 class KvOptions:
     """ ヘッダと本文の文法。出力は識別行のないkey:JSON値へ揃える。
 
-    header_skipは先頭コメント群で説明として飛ばす件数。
-    separatorは項目の階層、key_value_separatorはキーと値の区切りである。
+    separatorは項目の階層、key_value_separatorはキーと値の区切り。
+    コメントの取り込み方はwith_value_header / with_key_value_headerで選ぶ。
     """
 
     by_alias: bool = False
     separator: str = "."
     key_value_separator: str = ":"
     comment_prefixes: tuple[str, ...] = ("#", ";")
-    header_keys: tuple[str, ...] = ()
-    header_layout: Literal["values", "key_value"] = "values"
-    header_skip: int = 0
+    _header_keys: tuple[str, ...] | None = ()
+    _header_skip: int = 0
     inline_comments: bool = True
+
+    def __post_init__(self):
+        """ 本文とコメントの記号を確定する。ヘッダ方式は名前付きメソッドで選ぶ。
+        """
+        if not self.separator or any(c in self.separator for c in ":\r\n"):
+            raise ConfigurationError("キーの階層区切りが不正です")
+        if not self.key_value_separator or any(c in self.key_value_separator for c in "\r\n"):
+            raise ConfigurationError("キーと値の区切りが不正です")
+        if any(not prefix or "\n" in prefix or "\r" in prefix for prefix in self.comment_prefixes):
+            raise ConfigurationError("コメントの開始記号が不正です")
+
+    def with_value_header(self, keys: Sequence[str], *, skip: int = 0) -> KvOptions:
+        """ 値だけのコメントへ、指定した順にキーを与える新しい設定を返す。
+        """
+        if isinstance(keys, str):
+            raise ConfigurationError("keysは文字列一つではなく、キーの一覧で指定してください")
+        names = tuple(keys)
+        if not names or any(not key.strip() for key in names) or len(set(names)) != len(names):
+            raise ConfigurationError("値ヘッダには空欄・重複のないキー一覧が必要です")
+        return self._with_header(names, skip)
+
+    def with_key_value_header(self, *, skip: int = 0) -> KvOptions:
+        """ コメント自身のキーを使う新しい設定を返す。外部のキー一覧は不要。
+        """
+        return self._with_header(None, skip)
+
+    def _with_header(self, keys: tuple[str, ...] | None, skip: int) -> KvOptions:
+        """ 選択したヘッダ規則を保持する。モードとキー一覧の組合せは生成側で確定済み。
+        """
+        if type(skip) is not int or skip < 0:
+            raise ConfigurationError("skipは0以上の整数です")
+        return replace(self, _header_keys=keys, _header_skip=skip)
+
+    @property
+    def header_keys(self) -> tuple[str, ...]:
+        """ 値だけのヘッダへ与えるキーを返す。
+        """
+        return self._header_keys or ()
+
+    @property
+    def header_layout(self) -> Literal["values", "key_value"]:
+        """ キーの外部指定の有無から方式を求め、別のモード指定との矛盾をなくす。
+        """
+        return "key_value" if self._header_keys is None else "values"
+
+    @property
+    def header_skip(self) -> int:
+        """ 先頭説明として飛ばすコメント件数を返す。
+        """
+        return self._header_skip
 
 
 def strip_inline_comment(text: str, prefixes: tuple[str, ...]) -> str:
@@ -75,19 +125,6 @@ class KvSerializer:
 
     def __init__(self, *, options: KvOptions | None = None):
         self._options = options or KvOptions()
-        options = self._options
-        if not options.separator or any(c in options.separator for c in ":\r\n"):
-            raise ConfigurationError("キーの階層区切りが不正です")
-        if not options.key_value_separator or any(c in options.key_value_separator for c in "\r\n"):
-            raise ConfigurationError("キーと値の区切りが不正です")
-        if any(not prefix or "\n" in prefix or "\r" in prefix for prefix in options.comment_prefixes):
-            raise ConfigurationError("コメントの開始記号が不正です")
-        if type(options.header_skip) is not int or options.header_skip < 0:
-            raise ConfigurationError("header_skipは0以上の整数です")
-        if any(not key.strip() for key in options.header_keys) or len(set(options.header_keys)) != len(options.header_keys):
-            raise ConfigurationError("header_keysに空欄・重複は指定できません")
-        if options.header_layout not in {"values", "key_value"} or (options.header_layout == "key_value" and options.header_keys):
-            raise ConfigurationError("ヘッダはvaluesとキーリスト、またはkey_valueで指定してください")
 
     @property
     def encoding(self) -> str:
@@ -145,17 +182,8 @@ class KvSerializer:
                 raise SerializationError(f"KV行{line_number}: キーが重複しています: {key}")
             fields[key] = value
 
-        # ヘッダの位置またはキー名を使い、本文と同じ辞書へ収録する。
-        if options.header_layout == "key_value":
-            selected = header_values[options.header_skip:]
-            if not selected:
-                raise SerializationError("キー付きのコメントヘッダがありません")
-            pairs = [self._read_pair(value, f"KVヘッダ項目{i + 1}") for i, value in enumerate(selected)]
-        else:
-            selected = header_values[options.header_skip:options.header_skip + len(options.header_keys)]
-            if len(selected) != len(options.header_keys):
-                raise SerializationError("ヘッダ項目に対応するコメント値がありません")
-            pairs = [(key, parse_text_value(value)) for key, value in zip(options.header_keys, selected)]
+        # 本文を読み終えた後にヘッダを解釈し、同じ辞書へ合流させる。
+        pairs = self._header_pairs(header_values)
 
         for key, value in pairs:
             if key in fields:
@@ -164,6 +192,21 @@ class KvSerializer:
 
         # 形式由来の配置をここで解消し、モデルには通常の階層辞書を渡す。
         return model_binding.restore_value(unflatten_fields(fields, separator=options.separator))
+
+    def _header_pairs(self, values: list[str]) -> list[tuple[str, Any]]:
+        """ 確定したヘッダ方式に沿って、位置またはキーから値を取り出す。
+        """
+        options = self._options
+        selected = values[options.header_skip:]
+        if options.header_layout == "key_value":
+            if not selected:
+                raise SerializationError("キー付きのコメントヘッダがありません")
+            return [self._read_pair(value, f"KVヘッダ項目{i + 1}") for i, value in enumerate(selected)]
+
+        selected = selected[:len(options.header_keys)]
+        if len(selected) != len(options.header_keys):
+            raise SerializationError("ヘッダ項目に対応するコメント値がありません")
+        return [(key, parse_text_value(value)) for key, value in zip(options.header_keys, selected)]
 
     def _read_pair(self, line: str, location: str) -> tuple[str, Any]:
         """ 先にキーと値を分け、値の中の行末コメントだけを取り除く。

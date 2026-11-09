@@ -20,24 +20,34 @@ def validate_header_separator(separator: str):
 
 
 def parse_header_line(line: str, *, separator: str, multiple: bool) -> dict[str, str]:
-    """ 一行の対応を読む。複数対の場合、空白を含む値はJSON文字列で囲む。
+    """ 一行の文法を選ぶ。呼出側から直接渡せる区切り値は、この入口で確認する。
     """
     validate_header_separator(separator)
-    line = line.strip()
-    if not multiple:
-        parts = line.split(None, 1) if separator == " " else line.split(separator, 1)
-        if len(parts) != 2 or not parts[0].strip():
-            raise SerializationError("ヘッダは空でないkeyとvalueの組が必要です")
-        key, value = (part.strip() for part in parts)
-        if value.startswith('"'):
-            try:
-                value = json.loads(value)
-            except ValueError as error:
-                raise SerializationError("ヘッダの引用文字列が不正です") from error
-            if not isinstance(value, str):
-                raise SerializationError("ヘッダの引用値は文字列が必要です")
-        return {key: value}
+    if multiple:
+        return _parse_pairs(line.strip(), separator)
+    return _parse_pair(line.strip(), separator)
 
+
+def _parse_pair(line: str, separator: str) -> dict[str, str]:
+    """ 一対の区切りの後ろ全体を値にして、日時・パスのコロンを保持する。
+    """
+    parts = line.split(None, 1) if separator == " " else line.split(separator, 1)
+    if len(parts) != 2 or not parts[0].strip():
+        raise SerializationError("ヘッダは空でないkeyとvalueの組が必要です")
+    key, value = (part.strip() for part in parts)
+    if value.startswith('"'):
+        try:
+            value = json.loads(value)
+        except ValueError as error:
+            raise SerializationError("ヘッダの引用文字列が不正です") from error
+        if not isinstance(value, str):
+            raise SerializationError("ヘッダの引用値は文字列が必要です")
+    return {key: value}
+
+
+def _parse_pairs(line: str, separator: str) -> dict[str, str]:
+    """ 引用値と空白区切りの組を順に読み、キーの重複を拒否する。
+    """
     # 次のキーを推測せず、一対ずつ消費する。値内の時刻・パスのコロンは区切らない。
     pattern = r"([^\s]+)\s+" if separator == " " else r"([^\s" + re.escape(separator) + r"]+)\s*" + re.escape(separator) + r"\s*"
     key_pattern = re.compile(pattern)

@@ -8,7 +8,10 @@ from typing import BinaryIO
 import numpy as np
 import pytest
 
-from DataManager import BinaryWaveformSerializer, ConfigurationError, WaveformDecryptError, WaveformFormatError, WaveformHeader, WaveformOptions, WaveformRepository
+from DataManager import (
+    BinaryWaveformSerializer, ConfigurationError, WaveformDecryptError, WaveformFormatError,
+    WaveformHeader, WaveformOptions, WaveformRepository,
+)
 
 
 def read_test_header(stream: BinaryIO) -> WaveformHeader:

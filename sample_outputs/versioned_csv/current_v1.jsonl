@@ -1,0 +1,3 @@
+{"__meta__": {"schema_version": 2, "mode": "dict", "models": ["Reading"]}, "metadata": {"version": 1, "group_count": 1}}
+{"id": 1, "label": "taro", "reading": 30}
+{"id": 2, "label": "jiro", "reading": 4.0}
