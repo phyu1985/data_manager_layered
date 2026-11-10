@@ -106,20 +106,23 @@ class CsvSerializer:
         return self._dump_rows(rows, model_binding)
 
     def _dump_rows(self, rows: Sequence[ModelValue], model_binding: ModelBinding[ModelValue]) -> str:
-        """ 全行から列集合を決め、見出しと本文を生成する。
+        """ 子dictを列へ展開し、セル値と全行の列集合を確認してCSVを生成する。
         """
         self.validate_model_configuration(model_binding)
         flattened_rows: list[dict[str, Any]] = []
 
-        # 先に全行を辞書化し、階層を列名へ展開してCSVで表せる値か確認する。
-        for value in rows:
+        # 子dictはdetails.startのような列へ展開する。空dictと配列は値として残る。
+        for row_number, value in enumerate(rows, start=1):
             data = model_binding.to_dict(value, by_alias=self._write_options.by_alias)
             flattened_fields = flatten_fields(data, separator=self._write_options.field_separator)
-            if any(
-                item is not None and not isinstance(item, (str, int, float, bool, date, datetime, Decimal, UUID))
-                for item in flattened_fields.values()
-            ):
-                raise SerializationError("CSVの配列・空の階層・任意オブジェクトは暗黙に文字列化しません")
+
+            # 配列を列・行のどちらにするかは用途で異なるため、推測せず場所を示して止める。
+            for field_path, item in flattened_fields.items():
+                if item is not None and not isinstance(item, (str, int, float, bool, date, datetime, Decimal, UUID)):
+                    raise SerializationError(
+                        f"CSVの{row_number}件目、{field_path}: {type(item).__name__}はセルへ保存できません。"
+                        "配列・空のdict・任意オブジェクトは、出力用の列・行へ明示的に変換してください。"
+                    )
             flattened_rows.append(flattened_fields)
 
         # 1行目だけで決めると、後続行にしかない可変キーが保存されず消えてしまう。
@@ -172,10 +175,28 @@ class CsvSerializer:
         """ ヘッダの境界を決めてから表を読む。版変換や業務値の補完は扱わない。
         """
         metadata: dict[str, Any] = {}
-        body = serialized_text
+        # 説明だけを先に除き、その後は既存のメタ・表の順で読む。
+        body = self._skip_leading_comments(serialized_text) if self._read_options.comment_prefixes else serialized_text
         if self._metadata is not None:
             metadata, body = split_header(body, self._metadata, self._read_options.delimiter)
         return RowsDocument(metadata=metadata, rows=self._load_rows(body, model_binding))
+
+    def _skip_leading_comments(self, serialized_text: str) -> str:
+        """ 先頭の説明だけを飛ばす。列名行か最初の非コメント行で止める。
+        """
+        options = self._read_options
+        stream = StringIO(serialized_text, newline="")
+        while True:
+            line = stream.readline()
+            if not line:
+                return ""
+
+            # #付き列名を説明として捨てない。メタが先なら非コメント行で読み飛ばしを終える。
+            if options.header_line is not None and line.strip() == options.header_line.strip():
+                return line + stream.read()
+            if not line.strip() or any(line.lstrip().startswith(prefix) for prefix in options.comment_prefixes):
+                continue
+            return line + stream.read()
 
     def _load_rows(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> list[ModelValue]:
         """ 列を階層へ戻し、各行を指定モデルまたはdictへ復元する。
@@ -188,6 +209,8 @@ class CsvSerializer:
         first = stream.readline()
         while first and not first.strip():
             first = stream.readline()
+        if options.header_line is not None and first.strip() != options.header_line.strip():
+            raise SerializationError("CSVの列名行がheader_lineと一致しません")
         if options.header and first and options.column_prefix:
             if not first.startswith(options.column_prefix):
                 raise SerializationError("CSVの列名行にcolumn_prefixがありません")

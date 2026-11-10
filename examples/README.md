@@ -39,3 +39,7 @@ AA・AAAの二段形式と末尾空セルは[二段CSVの使い方](../docs/TWO_
 
 
 JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](../docs/FORMAT_OPTIONS.md)を参照してください。
+
+## コメント付きCSV
+
+`python -m examples.csv_comments`でi〜i5（iii_1を含む）を個別の関数から読み込みます。設定の違いと自由文からのメタ抽出は[説明](../docs/CSV_COMMENTS.md)を参照してください。

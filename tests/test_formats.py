@@ -259,8 +259,15 @@ def test_csv_alias_follows_model_input_rules(tmp_path):
 @pytest.mark.parametrize("value", [object(), {1, 2}])
 def test_csv_rejects_arbitrary_object_cells(tmp_path, value):
     repository = RowsRepository[dict[str, Any]](model=dict, base_directory=tmp_path)
-    with pytest.raises(SerializationError, match="オブジェクト"):
-        repository.save("bad.csv", [{"value": value}])
+    rows = [
+        {"details": {"value": 1}},
+        {"details": {"value": 2}},
+        {"details": {"value": value}},
+    ]
+    with pytest.raises(SerializationError, match="オブジェクト") as error:
+        repository.save("bad.csv", rows)
+    assert f"CSVの3件目、details.value: {type(value).__name__}" in str(error.value)
+    assert not (tmp_path / "bad.csv").exists()
 
 
 def test_csv_nullable_empty_column_inference_and_explicit_list_error(tmp_path):

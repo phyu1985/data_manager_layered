@@ -13,6 +13,7 @@ from DataManager.serializers.text_header import validate_header_separator
 class CsvOptions:
     """ 一つのテーブルの規則。columnsは見出しの置換にも、列名なし入力にも使う。
 
+    comment_prefixesは先頭説明の記号。header_lineはコメントと区別する入力の列名行。
     headerは列名行の有無。column_prefixはその行だけに付き、本文の値には適用しない。
     delimiterはセル、field_separatorは入れ子のキーの区切り。by_aliasは出力専用。
     """
@@ -26,6 +27,8 @@ class CsvOptions:
     empty_as_none: bool = True
     by_alias: bool = False
     allow_trailing_empty_columns: bool = False
+    comment_prefixes: tuple[str, ...] = ()
+    header_line: str | None = None
 
     def __post_init__(self):
         """ 本文の文法だけを確定する。入力の列数・値は読取時に確認する。
@@ -39,6 +42,15 @@ class CsvOptions:
             raise ConfigurationError("column_prefixに改行は使えません")
         if not self.header and self.column_prefix:
             raise ConfigurationError("column_prefixはheader=Trueのときだけ指定してください")
+
+        # 同じ記号の説明と列名は、明示した列名行で区別する。本文からは推測しない。
+        if any(not prefix or any(c in prefix for c in "\r\n") for prefix in self.comment_prefixes):
+            raise ConfigurationError("comment_prefixesは改行のない非空文字列です")
+        if self.header_line is not None:
+            if not self.header or not self.header_line.strip() or any(c in self.header_line for c in "\r\n"):
+                raise ConfigurationError("header_lineはheader=Trueで改行のない列名行を指定してください")
+        elif self.header and any(self.column_prefix.startswith(prefix) for prefix in self.comment_prefixes):
+            raise ConfigurationError("コメントと列名の開始記号が重なる場合はheader_lineを指定してください")
 
 
 @dataclass(frozen=True)

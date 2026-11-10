@@ -191,6 +191,17 @@ def test_normal_csv_does_not_acquire_metadata_implicitly(tmp_path: Path):
     with pytest.raises(ConfigurationError, match="metadata"):
         repository.save_document("bad.csv", RowsDocument(metadata={"version": 4}, rows=document.rows))
 
+    serializer = CsvSerializer(options=CsvOptions(
+        delimiter=" ", column_prefix="# ", comment_prefixes=("#",), header_line="# time value",
+    ))
+    source = RowsRepository(
+        model=Measurement, base_directory=tmp_path, serializers_by_extension={".csv": serializer},
+    )
+    (tmp_path / "commented.csv").write_text("#\n# description\n#\n# time value\n0 1.2\n", encoding="utf-8")
+    assert source.load_document("commented.csv") == document
+    repository.save_document("normalized.csv", source.load_document("commented.csv"))
+    assert repository.load_document("normalized.csv") == document
+
 
 def test_save_without_metadata_cannot_erase_configured_csv_metadata(tmp_path: Path):
     repository = csv_repository(tmp_path, CsvKeyValueHeaderOptions.until_blank_line())

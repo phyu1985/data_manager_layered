@@ -62,12 +62,14 @@ def _declared_values(text: str, options: CsvHeaderOptions, delimiter: str) -> tu
     """
     stream = StringIO(text, newline="")
     reader = csv.reader(stream, delimiter=delimiter, skipinitialspace=delimiter == " ", strict=True)
+    start = stream.tell()
     cells = next(reader, None)
 
     # 説明行を飛ばすのは先頭だけ。列名行の#を誤って捨てない。
     while cells is not None and (
         not cells or any(cells[0].lstrip().startswith(prefix) for prefix in options.comment_prefixes)
     ):
+        start = stream.tell()
         cells = next(reader, None)
 
     metadata: dict[str, Any] = {}
@@ -75,13 +77,22 @@ def _declared_values(text: str, options: CsvHeaderOptions, delimiter: str) -> tu
         if cells is None:
             raise SerializationError(f"ヘッダの項目が不足しています: {field.name}")
         has_padding = options.allow_padding and bool(cells) and all(value == "" for value in cells[1:])
-        if len(cells) != 1 and not has_padding:
-            raise SerializationError(f"ヘッダ{field.name}: 値は1セルです。末尾空セルにはallow_paddingを指定できます")
 
-        value = _field_value(cells[0], field)
+        # 空白区切りではversion 1自体が複数セルになる。名前付き項目は元の行で解釈し、
+        # 値に含まれる連続スペースや内側の引用符をCSVの分割結果から作り直さない。
+        is_named_text = delimiter == " " and field.separator is not None and len(cells) > 1 and not has_padding
+        if is_named_text:
+            field_text = text[start:stream.tell()].rstrip("\r\n")
+        else:
+            if len(cells) != 1 and not has_padding:
+                raise SerializationError(f"ヘッダ{field.name}: 値は1セルです。末尾空セルにはallow_paddingを指定できます")
+            field_text = cells[0]
+
+        value = _field_value(field_text, field)
         _add_values(metadata, {field.name: value}, empty_as_none=options.empty_as_none)
         # 最後の項目では先読みせず、列名行を本文へ残す。
         if len(metadata) < len(options.fields):
+            start = stream.tell()
             cells = next(reader, None)
     return metadata, stream.read()
 
