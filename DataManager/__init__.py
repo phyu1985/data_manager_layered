@@ -14,6 +14,7 @@ from DataManager.serializers.attribute_blocks import AttributeBlockSerializer
 from DataManager.serializers.json import JsonDumpOptions, JsonSerializer
 from DataManager.serializers.jsonl import JSONLDumpOptions, JSONLLoadOptions, JsonlSerializer
 from DataManager.serializers.yaml import YamlDumpOptions, YamlSerializer
+from DataManager.serializers.yaml_rows import YamlRowsSerializer
 from DataManager.services import (
     FileService, FileReader, FileWriter,
     ObjectFileService, RowsFileService, WaveformFileService,
@@ -35,7 +36,7 @@ __all__ = [
     "ConfigurationError", "SerializationError", "ObjectRepository", "RowsRepository", "RowsDocument",
     "CsvOptions", "CsvSerializer", "TwoTableCsvSerializer", "KvOptions", "KvSerializer", "BlockRow", "BlockRowsOptions", "BlockRowsSerializer", "AttributeBlockSerializer",
     "JsonDumpOptions", "JsonSerializer", "JSONLDumpOptions", "JSONLLoadOptions", "JsonlSerializer",
-    "YamlDumpOptions", "YamlSerializer", "CsvKeyValueHeaderOptions", "CsvHeaderOptions", "CsvHeaderField",
+    "YamlDumpOptions", "YamlSerializer", "YamlRowsSerializer", "CsvKeyValueHeaderOptions", "CsvHeaderOptions", "CsvHeaderField",
     "CustomTextOptions", "CustomTextSerializer", "ObjectFileService", "RowsFileService", "WaveformFileService",
     "VersionConverter", "VersionedObjectService", "VersionedRowsService", "Storage", "EditorInfo", "EditSession",
     "EditConflictError", "EditRevokedError", "lock_directory", "to_frame", "from_frame",

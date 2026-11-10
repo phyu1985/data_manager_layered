@@ -7,7 +7,8 @@
 | 形式 | 拡張子・入口 | 対応する値 |
 | --- | --- | --- |
 | JSON | ObjectRepository / .json | 単一モデル・dict |
-| YAML | ObjectRepository / .yaml, .yml | 単一モデル・dict、既存文書・テンプレートの合成 |
+| YAML文書 | ObjectRepository / .yaml, .yml | 単一モデル・dict、既存文書・テンプレートの合成 |
+| YAML一覧 | RowsRepository / .yaml, .yml | 同じ型のモデル一覧・dict一覧、metadata/rows文書 |
 | KVテキスト | ObjectRepository / .txt | 単一モデル・dict |
 | CSV | RowsRepository / .csv | 同じ型のモデル一覧・dict一覧 |
 | JSONL | RowsRepository / .jsonl | 同じ型・混在モデルの一覧・dict一覧 |
@@ -23,7 +24,7 @@ dictモードも、保存・読み込みの入口を増やさずmodel=dictで指
 - BaseModelは検証済みの入力として扱います。生成後の変更や検証を省略したモデルの再検証方針はLIMITATIONS.mdを参照してください。
 - ユースケース用の呼び出しは[用途別サービスと実行例](../examples/README.md)を参照してください。
 
-## YAML
+## YAMLの単一文書
 
 ```python
 from pathlib import Path
@@ -167,3 +168,7 @@ decrypt="auto"の既定では.shnに復号を要求し、その他の拡張子�
 
 
 JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](FORMAT_OPTIONS.md)を参照してください。
+
+## YAMLの一覧
+
+YamlRowsSerializerはルートlistとmetadata/rows文書を扱い、RowsRepositoryの既定登録に含まれます。Object用のテンプレート合成とは責務を分けています。詳細と実行例は[YAML Rows](YAML_ROWS.md)を参照してください。

@@ -5,18 +5,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import date, datetime
 from io import StringIO
 from typing import Any, cast
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.error import YAMLError
-from ruamel.yaml.nodes import MappingNode, SequenceNode
-from ruamel.yaml.scalarbool import ScalarBoolean
 
 from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.model_conversion import ModelBinding, ModelValue
+from DataManager.serializers.yaml_values import load_yaml_value, to_plain_yaml_value
 
 
 @dataclass(frozen=True)
@@ -73,15 +71,7 @@ class YamlSerializer:
     def _load_document(self, serialized_text: str) -> dict[str, Any]:
         """ 最上位が文字列キーのマッピングである文書だけを受け入れる。
         """
-        try:
-            handler = self._create_yaml_handler()
-
-            # round-tripの値構築で循環エイリアスがNoneになる前に、構文ノードを検査する。
-            syntax_tree: object = handler.compose(serialized_text)
-            self._validate_yaml_aliases(syntax_tree, set())
-            document: object = handler.load(serialized_text)
-        except YAMLError as error:
-            raise SerializationError(f"YAMLを解析できません: {error}") from error
+        document: object = load_yaml_value(serialized_text, self._create_yaml_handler())
 
         if document is None:
             return cast(dict[str, Any], CommentedMap())
@@ -92,72 +82,8 @@ class YamlSerializer:
             raise SerializationError("YAMLのキーはstrで指定してください")
 
         # 実体はCommentedMapのまま保持する。コメントAPIを使う箇所だけAnyで橋渡しする。
-        self._to_plain_value(mapping_value, set())
+        to_plain_yaml_value(mapping_value, set())
         return cast(dict[str, Any], document)
-
-    def _validate_yaml_aliases(self, node: object, ancestor_ids: set[int]):
-        """ 値へ変換する前の構文木で、循環するエイリアスを拒否する。
-        """
-        if not isinstance(node, (MappingNode, SequenceNode)):
-            return
-        if id(node) in ancestor_ids:
-            raise SerializationError("循環するYAMLエイリアスには対応していません")
-
-        # ruamel固有のノードAPIはここで扱い、モデル復元側には持ち込まない。
-        yaml_node: Any = node
-        if isinstance(node, MappingNode):
-            field_pairs = cast(list[tuple[object, object]], yaml_node.value)
-            child_nodes = [item for field_pair in field_pairs for item in field_pair]
-        else:
-            child_nodes = cast(list[object], yaml_node.value)
-
-        ancestor_ids.add(id(node))
-        try:
-            for child in child_nodes:
-                self._validate_yaml_aliases(child, ancestor_ids)
-        finally:
-            ancestor_ids.remove(id(node))
-
-    def _to_plain_value(self, value: object, ancestor_ids: set[int]) -> Any:
-        """ 編集用ノードを通常の辞書・配列へ戻し、循環参照と不正なキーを拒否する。
-        """
-        if isinstance(value, dict):
-            mapping_value = cast(dict[object, Any], value)
-            if id(mapping_value) in ancestor_ids:
-                raise SerializationError("循環するYAMLエイリアスには対応していません")
-            ancestor_ids.add(id(mapping_value))
-            try:
-                result: dict[str, Any] = {}
-                for key, item in mapping_value.items():
-                    if not isinstance(key, str):
-                        raise SerializationError("YAMLのキーはstrで指定してください")
-                    result[str(key)] = self._to_plain_value(item, ancestor_ids)
-                return result
-            finally:
-                ancestor_ids.remove(id(mapping_value))
-
-        if isinstance(value, list):
-            sequence_value = cast(list[object], value)
-            if id(sequence_value) in ancestor_ids:
-                raise SerializationError("循環するYAMLエイリアスには対応していません")
-            ancestor_ids.add(id(sequence_value))
-            try:
-                return [self._to_plain_value(item, ancestor_ids) for item in sequence_value]
-            finally:
-                ancestor_ids.remove(id(sequence_value))
-
-        # 編集用のスカラーも通常の型へ戻す。ScalarBooleanはintの派生なので先に判定する。
-        if isinstance(value, (bool, ScalarBoolean)):
-            return bool(value)
-        if isinstance(value, str):
-            return str(value)
-        if isinstance(value, int):
-            return int(value)
-        if isinstance(value, float):
-            return float(value)
-        if value is None or isinstance(value, (bytes, date, datetime)):
-            return value
-        raise SerializationError(f"通常のYAML値として扱えない型です: {type(value).__name__}")
 
     def _trim_block_scalar_padding(self, document: Any, key: str, value: object):
         """ 保持する末尾改行と書式の空行が重なり、文字列の値が増えるのを防ぐ。
@@ -323,7 +249,7 @@ class YamlSerializer:
             self._merge_document(document, existing, copy_comments=True)
 
         data = model_binding.to_dict(value, by_alias=self._dump_options.by_alias)
-        self._to_plain_value(data, set())
+        to_plain_yaml_value(data, set())
 
         # 版変換後の辞書が保存仕様の正本。既存文書は書式だけに利用する。
         if exact_fields:
@@ -355,4 +281,4 @@ class YamlSerializer:
         """
         document = self._load_document(serialized_text)
         # コメントを持つ編集用ノードを、利用側へ返す辞書に持ち出さない。
-        return model_binding.restore_value(self._to_plain_value(document, set()))
+        return model_binding.restore_value(to_plain_yaml_value(document, set()))

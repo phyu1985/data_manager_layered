@@ -60,6 +60,7 @@ class JsonlSerializer:
         self._tag_field = tag_field
         self._model_tags: dict[type[object], str] = {}
         self._document_models: tuple[str, ...] | None = None
+        self._accept_empty_models = False
         self._dump_options = dump_options or JSONLDumpOptions()
         self._load_options = load_options or JSONLLoadOptions()
 
@@ -93,6 +94,20 @@ class JsonlSerializer:
         serializer = cls(dump_options=dump_options, load_options=load_options)
         serializer._document_models = names
         return serializer
+
+    def with_document_models(self, model_names: Sequence[str]) -> JsonlSerializer:
+        """ 版変換用の型名を設定した独立コピーを返す。既存の読書き設定は保持する。
+        """
+        if self._model_tags:
+            raise ConfigurationError("版変換の内部JSONLはdict用のSerializerで構成してください")
+        configured = JsonlSerializer.for_dict(
+            document_models=model_names, dump_options=self._dump_options, load_options=self._load_options,
+        )
+        if self._document_models and set(self._document_models) != set(configured._document_models or ()):
+            raise ConfigurationError("JSONLのdocument_modelsと現在モデルの登録名が一致しません")
+        # 元のdict用入力が型名なしなら、その読取互換だけを維持する。新規出力には必ず型名を書く。
+        configured._accept_empty_models = self._accept_empty_models or not self._document_models
+        return configured
 
     @property
     def encoding(self) -> str:
@@ -230,6 +245,9 @@ class JsonlSerializer:
             raise SerializationError("JSONLのメタ情報がRepositoryの型・形式と一致しません")
 
         actual_metadata = cast(dict[str, Any], parsed_metadata)
+
+        if self._accept_empty_models and model_binding.data_mode == "dict" and actual_metadata.get("models") == []:
+            expected_metadata["models"] = []
 
         # True == 1となるため、バージョンは等値だけでなくint型であることも確認する。
         if (

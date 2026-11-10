@@ -1,4 +1,4 @@
-""" CSV・JSONLで共通に使う、ファイルのメタ情報と本文の受け渡し形式。
+""" CSV・JSONL・YAMLで共通に使う、ファイルのメタ情報と本文の受け渡し形式。
 """
 from dataclasses import dataclass
 from typing import Generic, TypeVar

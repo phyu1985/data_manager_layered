@@ -13,3 +13,5 @@ extendedは人工の拡張形式の変換・版互換出力・正規化したKV�
 versioned_filesは版別YAMLテンプレートと保存結果、meta・本文を変換したCSV/JSONL、属性8行のブロックです。yaml/templatesとyaml/dataで、雛形と保存先を分けています。
 
 設定サンプルの現在版はV4です。versioned_files/yaml/data/v3.jsonはTrueへ補完する旧入力、settings.yamlはFalseを保持した現在版、optional_result.txtは残っている生成物の例です。
+
+yaml_rowsはルートlistとmetadata/rows形式、およびV2/V3だけを扱う版変換の見本です。人工の測定値を使い、元のV2ファイルへ上書きしません。

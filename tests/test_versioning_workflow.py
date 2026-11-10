@@ -29,8 +29,8 @@ def test_chain_converts_both_directions_without_mutating_input():
         value["nested"]["value"] -= 1
         return value
 
-    converter = VersionConverter(current_version=6, upcasts={index: upcast for index in range(6)},
-                                 downcasts={index: downcast for index in range(1, 7)})
+    converter = VersionConverter(current_version=6, upcasts={index: upcast for index in range(2, 6)},
+                                 downcasts={index: downcast for index in range(3, 7)})
     source = {"version": 2, "nested": {"value": 10}}
     original = deepcopy(source)
     latest = converter.to_current(source)
@@ -38,6 +38,9 @@ def test_chain_converts_both_directions_without_mutating_input():
     assert source == original
     assert latest == {"version": 6, "nested": {"value": 14}}
     assert converter.convert(latest, target_version=2) == original
+    assert visited == ["up2", "up3", "up4", "up5", "down6", "down5", "down4", "down3"]
+    with pytest.raises(ConfigurationError, match="V0→V1"):
+        converter.to_current({"version": 0, "nested": {"value": 10}})
     assert visited == ["up2", "up3", "up4", "up5", "down6", "down5", "down4", "down3"]
 
 

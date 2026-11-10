@@ -10,7 +10,8 @@ from typing import Any, Generic, TypeVar, cast
 from DataManager.errors import ConfigurationError, SerializationError
 from DataManager.repositories import ObjectRepository
 from DataManager.repositories import RowsRepository
-from DataManager.documents import RowsDocument
+from DataManager.documents import MetadataValue, RowsDocument
+from DataManager.rows_models import RowModel, RowsModelCodec
 
 DocumentValue = TypeVar("DocumentValue")
 DictionaryValue = dict[str, Any]
@@ -38,6 +39,13 @@ class VersionConverter:
 
     upcastsのキーnはn→n+1、downcastsのキーnはn→n-1を表す。
     項目の改名・補完・廃止は注入した関数が担当し、このクラスは解釈しない。
+
+    登録するcastは実際に通る経路だけでよい。現在版V3でV2/V3のみを扱うなら、
+    upcasts={2: V2→V3の関数}、downcasts={3: V3→V2の関数}だけを指定する。
+    未対応のV0/V1のために仮のcastを作る必要はない。
+
+    版キーの欠損はV0として扱うが、値の形からV2/V3などを推測する機能はない。
+    版を確定できない入力は呼出側で拒否し、辻褄合わせのcastで通さない。
     """
 
     def __init__(
@@ -212,8 +220,8 @@ class VersionedRowsRepository(Generic[DocumentValue]):
 
     キャスト対象はversion・metadata・rowsを持つ文書。版ごとのモデルを要求しない。
     metaの改名・補完・廃止もキャストへ渡す。cast内の版は文書直下を参照する。
-    read_versionはCSV等のmeta内の版表現を解釈し、保存時の版は共通処理がmetaへ記録する。
-    JSONLの型情報modelsは、生のdict用Serializerのdocument_modelsで文書の固定名を構成する。
+    metadata_version_fieldsは版ごとのメタ内の版キー。Noneは版を記載しない旧形式。
+    for_modelsは現在モデルの対応表から、復元・辞書化とJSONLの型名を一括構成する。
     """
 
     def __init__(
@@ -222,6 +230,7 @@ class VersionedRowsRepository(Generic[DocumentValue]):
         encode_current: Callable[[DocumentValue], DictionaryValue],
         target_version: int | None = None,
         read_version: Callable[[DictionaryValue], int] | None = None,
+        metadata_version_fields: Mapping[int, str | None] | None = None,
     ):
         if converter.version_field in {"metadata", "rows"}:
             raise ConfigurationError("版項目はmetadata / rows以外にしてください")
@@ -230,7 +239,61 @@ class VersionedRowsRepository(Generic[DocumentValue]):
         self._decode_current = decode_current
         self._encode_current = encode_current
         self._target_version = _configured_target(target_version, converter.current_version)
-        self._read_version = read_version or converter.read_version
+
+        # 版キーだけはRepositoryが管理する。通常メタの改名・廃止はcastへ任せる。
+        self._metadata_version_fields: dict[int, str | None] = {
+            version: converter.version_field for version in range(converter.current_version + 1)
+        }
+        for version, field in (metadata_version_fields or {}).items():
+            if type(version) is not int or not 0 <= version <= converter.current_version:
+                raise ConfigurationError("メタの版キーの対応表は0以上現在版以下の版を指定してください")
+            if field is None and version != 0 and read_version is None:
+                raise ConfigurationError("V1以降で版キーを省く場合はread_versionを指定してください")
+            if field is not None and not field.strip():
+                raise ConfigurationError("メタの版キーは非空文字列かNoneを指定してください")
+            self._metadata_version_fields[version] = field
+        self._version_keys = {field for field in self._metadata_version_fields.values() if field is not None}
+        self._version_keys.add(converter.version_field)
+        self._read_version = read_version or self._read_metadata_version
+
+    @classmethod
+    def for_models(
+        cls, *, repository: RowsRepository[DictionaryValue], converter: VersionConverter,
+        metadata_model: type[MetadataValue], model_tags: Mapping[type[RowModel], str],
+        tag_field: str = "type", target_version: int | None = None,
+        read_version: Callable[[DictionaryValue], int] | None = None,
+        metadata_version_fields: Mapping[int, str | None] | None = None,
+    ) -> VersionedRowsRepository[RowsDocument[MetadataValue, RowModel]]:
+        """ 現在モデルを一度登録し、型付き文書とJSONLのmodelsを同じ表から構成する。
+        """
+        codec = RowsModelCodec(
+            metadata_model=metadata_model, model_tags=model_tags, tag_field=tag_field,
+            version_field=converter.version_field, current_version=converter.current_version,
+        )
+        # コピーへ接続するため、呼出元のSerializerやRepositoryの設定は変わらない。
+        configured = repository.with_jsonl_models(tuple(model_tags.values()))
+        return VersionedRowsRepository(
+            repository=configured, converter=converter,
+            decode_current=codec.decode, encode_current=codec.encode,
+            target_version=target_version, read_version=read_version,
+            metadata_version_fields=metadata_version_fields,
+        )
+
+    def _read_metadata_version(self, metadata: DictionaryValue) -> int:
+        """ 対応表にある版キーを読む。欠損だけをV0とし、矛盾したキーは拒否する。
+        """
+        present = self._version_keys & metadata.keys()
+        if not present:
+            return 0
+        if len(present) != 1:
+            raise SerializationError("メタに複数の版キーがあります")
+        field = next(iter(present))
+        raw = metadata[field]
+        version = int(raw) if isinstance(raw, str) and raw.isdecimal() else raw
+        version = self._converter.read_version({self._converter.version_field: version})
+        if self._metadata_version_fields[version] != field:
+            raise SerializationError(f"V{version}のメタの版キーが対応表と一致しません")
+        return version
 
     def for_version(self, target_version: int | None) -> "VersionedRowsRepository[DocumentValue]":
         """ メタ付き一覧も、保存版を構成して共通のFileServiceへ渡せるようにする。
@@ -239,10 +302,11 @@ class VersionedRowsRepository(Generic[DocumentValue]):
             repository=self._repository, converter=self._converter,
             decode_current=self._decode_current, encode_current=self._encode_current,
             read_version=self._read_version, target_version=target_version,
+            metadata_version_fields=self._metadata_version_fields,
         )
 
     def _document(self, value: DictionaryValue) -> RowsDocument[DictionaryValue, DictionaryValue]:
-        """ 変換後の文書構造を検証し、保存版をメタへ明示して戻す。
+        """ 文書構造を確認し、出力版に合う名前でメタの版を記録する。
         """
         metadata = dict(_require_dict(value.get("metadata")))
         raw_rows = value.get("rows")
@@ -250,8 +314,13 @@ class VersionedRowsRepository(Generic[DocumentValue]):
             raise SerializationError("rowsは辞書のリストが必要です")
         rows = [_require_dict(row) for row in cast(list[object], raw_rows)]
 
-        # castが確定した文書直下の版を正本とし、古いmetaの版値を残さない。
-        metadata[self._converter.version_field] = self._converter.read_version(value)
+        # 内部の版と、旧ファイルに書く版キーは別物。管理対象の版キーだけを置き換える。
+        version = self._converter.read_version(value)
+        for field in self._version_keys:
+            metadata.pop(field, None)
+        output_field = self._metadata_version_fields[version]
+        if output_field is not None:
+            metadata[output_field] = version
         return RowsDocument(metadata=metadata, rows=rows)
 
     def load(self, path: str | Path) -> DocumentValue:

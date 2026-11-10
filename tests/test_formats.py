@@ -119,11 +119,12 @@ def test_yaml_dictionary_does_not_return_editing_nodes(tmp_path):
     assert type(value) is dict and type(value["a"]) is dict and type(value["a"]["b"]) is list
 
 
-def test_csv_nested_model_and_nullable_fields(tmp_path):
+def test_rows_nested_model_and_nullable_fields(tmp_path):
     repository = RowsRepository(model=Settings, base_directory=tmp_path)
     value = Settings(name="A,\"B\"\nC", details=Details(count=3, enabled=False))
-    repository.save("settings.csv", [value])
-    assert repository.load("settings.csv") == [value]
+    for extension in ("csv", "yaml", "yml"):
+        repository.save(f"settings.{extension}", [value])
+        assert repository.load(f"settings.{extension}") == [value]
     assert "details.count" in (tmp_path / "settings.csv").read_text()
 
 
@@ -133,11 +134,15 @@ def test_csv_collects_columns_from_all_rows(tmp_path):
     assert repository.load("dicts.csv") == [{"a": "first", "b": None}, {"a": None, "b": "second"}]
 
 
-def test_empty_typed_csv_has_header(tmp_path):
+def test_empty_typed_rows_keep_format_structure(tmp_path):
     repository = RowsRepository(model=Settings, base_directory=tmp_path)
     repository.save("empty.csv", [])
     assert (tmp_path / "empty.csv").read_text().splitlines() == ["name,details.count,details.enabled,optional,created"]
     assert repository.load("empty.csv") == []
+    repository.save("empty.yaml", [])
+    assert (tmp_path / "empty.yaml").read_text().strip() == "[]"
+    assert repository.load_document("empty.yaml").metadata == {}
+    assert repository.load("empty.yaml") == []
 
 
 def test_empty_dict_csv_requires_columns(tmp_path):

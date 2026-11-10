@@ -1,6 +1,6 @@
-# CSV・JSONLのメタ情報を同じ入口で扱う
+# CSV・JSONL・YAMLのメタ情報を同じ入口で扱う
 
-ファイル全体の項目と、テーブル本文は別の値として扱います。どちらの形式も`load_document()`で`RowsDocument(metadata=..., rows=...)`を受け取り、`save_document()`で一体として保存します。Repositoryを直接使う場合のAPIです。利用側のFileServiceではRowsDocumentRepositoryへメタの型を構成し、他のファイルと同じload/save/save_asで扱えます。
+ファイル全体の項目と、テーブル本文は別の値として扱います。いずれの形式も`load_document()`で`RowsDocument(metadata=..., rows=...)`を受け取り、`save_document()`で一体として保存します。Repositoryを直接使う場合のAPIです。利用側のFileServiceではRowsDocumentRepositoryへメタの型を構成し、他のファイルと同じload/save/save_asで扱えます。
 
 ```python
 from pathlib import Path
@@ -100,3 +100,5 @@ CSV設定の全項目・条件とa〜gの例は[CSV設定ガイド](CSV_OPTIONS.
 
 
 JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](FORMAT_OPTIONS.md)を参照してください。
+
+YAMLも同じRowsDocumentの入口を使います。saveはルートlist、save_documentはmetadata/rows文書です。loadとload_documentは両方を読み込めます。詳しくは[YAML Rows](YAML_ROWS.md)を参照してください。

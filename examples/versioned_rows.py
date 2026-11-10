@@ -49,25 +49,6 @@ def downcast_capture(document: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def decode_capture(document: dict[str, Any]) -> RowsDocument[CaptureMetadata, Reading]:
-    """ キャスト完了後に、metaと本文を現在のモデルで検証する。
-    """
-    return RowsDocument(
-        metadata=CaptureMetadata.model_validate(document["metadata"]),
-        rows=[Reading.model_validate(row) for row in document["rows"]],
-    )
-
-
-def encode_capture(document: RowsDocument[CaptureMetadata, Reading]) -> dict[str, Any]:
-    """ 現在版の辞書へ戻す。出力版の選択はVersionedRowsRepositoryが担当する。
-    """
-    return {
-        "version": 1,
-        "metadata": document.metadata.model_dump(),
-        "rows": [row.model_dump() for row in document.rows],
-    }
-
-
 def rows_example(directory: Path):
     """ CSVの旧meta・旧本文を読み、現在JSONLと旧版CSVへ出し分ける。
     """
@@ -75,18 +56,17 @@ def rows_example(directory: Path):
         model=dict, base_directory=directory,
         serializers_by_extension={
             ".csv": CsvSerializer(metadata=CsvKeyValueHeaderOptions.until_blank_line()),
-            ".jsonl": JsonlSerializer.for_dict(document_models=('Reading',)),
+            ".jsonl": JsonlSerializer(),
         },
     )
     raw_repository.save_document("source.csv", RowsDocument(
         metadata={"version": 0, "device": "A001", "unused": "discard"},
         rows=[{"time": 0, "reading": 1.2}],
     ))
-    repository = VersionedRowsRepository(
+    repository = VersionedRowsRepository.for_models(
         repository=raw_repository,
         converter=VersionConverter(current_version=1, upcasts={0: upcast_capture}, downcasts={1: downcast_capture}),
-        decode_current=decode_capture, encode_current=encode_capture,
-        read_version=lambda metadata: int(metadata.get("version", 0)),
+        metadata_model=CaptureMetadata, model_tags={Reading: "Reading"},
     )
     source = FileService(repository=repository, path="source.csv")
     document = source.load()

@@ -18,7 +18,7 @@
 
 DataManager内の一般的なファイルは、repositories.py（ファイル操作）、file_io.py（ロック・原子的置換）、model_conversion.py（モデルと辞書）、versioning.py（隣接版キャスト）、services.py（保存先を固定した窓口）、waveform.py（波形読取）です。
 
-serializers/にはjson.py・yaml.py・custom_text.py・csv.py・jsonl.pyがあり、field_paths.pyがCSVの入れ子項目の列対応を担当します。DataManager/Excelにはapi.py・contracts.py・models.py・project.py・excel.py・template.pyと業務明細を橋渡しするadapter.pyがあります。
+serializers/にはjson.py・yaml.py・yaml_rows.py・custom_text.py・csv.py・jsonl.pyがあり、field_paths.pyがCSVの入れ子項目の列対応、yaml_values.pyがObject/Rowsで共用するYAML解析・値検証を担当します。DataManager/Excelにはapi.py・contracts.py・models.py・project.py・excel.py・template.pyと業務明細を橋渡しするadapter.pyがあります。
 
 sample_dataは入力例、outputsは実行時出力（Git対象外）、testsは回帰テスト、typecheckは型検査用です。reference/previous_projectsには元の3フォルダのコード・説明・テンプレート・残っていた合成出力例を保存しています。仮想環境・Git履歴・キャッシュ・ロックは含めません。reference/development_notesには開発途中の図・説明も段階別に残しています。
 
@@ -26,7 +26,7 @@ sample_dataは入力例、outputsは実行時出力（Git対象外）、testsは
 
 ## メタ付き一覧の追加
 
-DataManager/documents.pyが共通のRowsDocument、serializers/csv_options.pyの設定型が本文とヘッダを分け、csv_headers.pyがCSVの境界規則を担当します。RepositoryとRowsFileServiceのload_document / save_documentはCSV・JSONL共通です。例はexamples/metadata.py、詳細は[METADATA.md](METADATA.md)です。
+DataManager/documents.pyが共通のRowsDocument、serializers/csv_options.pyの設定型が本文とヘッダを分け、csv_headers.pyがCSVの境界規則を担当します。RepositoryとRowsFileServiceのload_document / save_documentはCSV・JSONL・YAML共通です。例はexamples/metadata.py、詳細は[METADATA.md](METADATA.md)です。
 
 ## 共有編集権と拡張形式
 

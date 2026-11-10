@@ -22,6 +22,7 @@ from DataManager.serializers.kv import KvSerializer
 from DataManager.serializers.json import JsonSerializer
 from DataManager.serializers.jsonl import JsonlSerializer
 from DataManager.serializers.yaml import YamlSerializer
+from DataManager.serializers.yaml_rows import YamlRowsSerializer
 
 
 class ObjectSerializer(Protocol):
@@ -266,13 +267,30 @@ class RowsRepository(Generic[ModelValue]):
             if serializers_by_extension is not None
             else {
                 ".jsonl": JsonlSerializer(),
-                **({".csv": CsvSerializer()} if self._model_binding.data_mode != "mixed" else {}),
+                **({
+                    ".csv": CsvSerializer(), ".yaml": YamlRowsSerializer(), ".yml": YamlRowsSerializer(),
+                } if self._model_binding.data_mode != "mixed" else {}),
             }
         )
 
         # tagの重複や業務フィールドとの衝突は、最初の保存を待たずに検出する。
         for serializer in self._serializers_by_extension.values():
             serializer.validate_model_configuration(self._model_binding)
+
+    def with_jsonl_models(self, model_names: Sequence[str]) -> RowsRepository[ModelValue]:
+        """ 版変換前のdict用JSONLへ型名を接続し、元のRepositoryを変えずに返す。
+        """
+        if self._model_binding.data_mode != "dict":
+            raise ConfigurationError("with_jsonl_modelsは版変換前のdict用Repositoryに使用してください")
+        serializers = {
+            extension: serializer.with_document_models(model_names) if isinstance(serializer, JsonlSerializer) else serializer
+            for extension, serializer in self._serializers_by_extension.items()
+        }
+        return RowsRepository(
+            model=self._model_binding.model_classes, base_directory=self._base_directory,
+            serializers_by_extension=serializers, lock_timeout_seconds=self._lock_timeout_seconds,
+            commit_guard=self._commit_guard,
+        )
 
     def _resolve_path_and_serializer(self, path: str | Path) -> tuple[Path, RowsSerializer]:
         """ 基準ディレクトリと拡張子から、保存先と変換担当を決める。

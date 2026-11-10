@@ -170,8 +170,14 @@ def _validate_values(metadata: dict[str, Any]):
 def _dump_fields(metadata: dict[str, Any], options: CsvHeaderOptions, delimiter: str) -> str:
     """ 宣言した項目だけを、各項目の書式と順序で生成する。
     """
-    if set(metadata) != {field.name for field in options.fields}:
-        raise SerializationError("ヘッダのfieldsと保存するメタ項目が一致しません")
+    expected = {field.name for field in options.fields}
+    missing = expected - metadata.keys()
+    unexpected = metadata.keys() - expected
+    if missing or unexpected:
+        raise SerializationError(
+            f"ヘッダのfieldsと保存するメタ項目が一致しません。不足={sorted(missing)}、余剰={sorted(unexpected)}。"
+            "出力版へのメタ変換を確認してください"
+        )
     _validate_values(metadata)
     output = StringIO(newline="")
     writer = csv.writer(output, delimiter=delimiter, lineterminator="\n", quoting=csv.QUOTE_ALL if delimiter == " " else csv.QUOTE_MINIMAL)

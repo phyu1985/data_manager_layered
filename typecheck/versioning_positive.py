@@ -56,3 +56,33 @@ def verify_rows_types(directory: Path):
     assert_type(document, RowsDocument[dict[str, Any], Settings])
     assert_type(document.rows[0], Settings)
     file.save_as("copy.jsonl", document)
+
+
+class AnalysisMetadata(BaseModel):
+    """ 現在版のメタの型。
+    """
+
+    version: int
+
+
+class Note(BaseModel):
+    """ 混在型の確認用。
+    """
+
+    message: str
+
+
+def verify_registered_rows_types(directory: Path):
+    model_tags: dict[type[Settings | Note], str] = {Settings: "settings", Note: "note"}
+    repository = VersionedRowsRepository.for_models(
+        repository=RowsRepository(model=dict, base_directory=directory),
+        converter=VersionConverter(current_version=1, upcasts={}, downcasts={}),
+        metadata_model=AnalysisMetadata, model_tags=model_tags,
+        metadata_version_fields={0: None},
+    )
+    file = FileService(repository=repository, path="current.jsonl")
+    assert_type(file.load(), RowsDocument[AnalysisMetadata, Settings | Note])
+    assert_type(repository.for_version(0).load("old.txt"), RowsDocument[AnalysisMetadata, Settings | Note])
+    file.save(RowsDocument(
+        metadata=AnalysisMetadata(version=1), rows=[Settings(threshold=1), Note(message="checked")],
+    ))

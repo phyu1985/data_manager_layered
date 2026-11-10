@@ -141,3 +141,54 @@ CRLF、引用符内改行・#、メタ値の連続空白保持、不正な列名
 一時データではlist・空list・list[dict]・空の子dictの拒否、子dict/子モデルの展開、
 エラー時の既存ファイル保護も確認しています。
 既存pytestは313件成功、Pyrightはエラー0・警告0、故意の型誤りも5ファイルで期待件数どおりです。
+
+## VersionedRowsのメタ・モデル連携（2026-11-10）
+
+metadata_version_fieldsで版ごとのメタ内の版キーを指定できます。V0のver、版項目なしのV0、
+V1のversionを扱い、通常メタの改名・廃止はmetaと本文をまとめたcastへ任せます。
+for_modelsは現在モデルの登録から復元・辞書化とJSONLのmodelsを構成します。
+元のRepository・Serializerを変更せず、ロックとcommit_guardを保持したコピーを使います。
+
+examples/versioned_block_rows.pyで、V0 BlockRows→現在モデル→V1 JSONL→V0 BlockRowsの単一/混在モデル、
+版項目なしの旧形式を確認しました。元ファイルを上書きせず、別名保存しています。
+既存の混在JSONLケースを拡張し、新規pytestケースは追加していません。
+一時データではmodels=[]の旧dict JSONLの読み込み、未知models/type・不足メタ・余剰メタ・矛盾した版キーの拒否、
+タグ名変更、モデル名の重複・業務フィールド衝突、保存失敗時の既存ファイル保護も確認しました。
+通常の旧コンストラクターとdecode_current / encode_currentは互換維持しています。
+新しいモデル変換コードもPyrightのstrict対象とし、混在型の推論をassert_typeで確認しています。
+
+この変更では既存pytest 313件成功、最低対応依存環境270件成功・Excel関連4件スキップ、Pyrightはエラー0・警告0、故意の型誤り5ファイルも期待件数どおりでした。
+
+## config/versionのサンプル（2026-11-10）
+
+examples/version_key_names.pyに、V0のconfig 0、現在のConfig.version、V1 JSONLのmetadata.version、
+V0への別名保存に絞った架空例を追加しました。castはlimit/thresholdの改名だけを担当し、
+版キーの改名を重複実装していません。説明はdocs/VERSION_KEY_NAMES.md、
+入出力3ファイルの見本はsample_outputs/version_key_namesに収録しています。
+
+新サンプルの実行・両版の再読・元ファイルのバイト列保持を確認しました。
+関連する既存テスト71件成功、Pyrightはエラー0・警告0です。
+この変更はサンプル・説明・出力見本の追加で、コアAPIや新規pytestケースは増やしていません。
+
+## YAML Rowsと未登録の旧版（2026-11-11）
+
+VersionConverterのdocstringへ、V2/V3だけを扱う場合はupcasts={2: ...}/downcasts={3: ...}だけでよいこと、
+版情報の欠損はV0であり、根拠のない版推測や辻褄合わせのcastを作らないことを明記しました。
+例はexamples/yaml_rows.pyのsample_versioned_rowsです。
+
+YamlRowsSerializerを追加し、RowsRepositoryの.yaml/.ymlの既定登録に接続しました。
+一覧はルートlist、文書はmetadata/rowsとして全件保存します。loadとload_documentは両方を読み込めます。
+Object用のテンプレート・コメント合成は持たせず、YAML解析・循環検出・値の正規化だけをyaml_values.pyへ移して共用しています。
+既存の入れ子/空一覧のテストを拡張し、新規pytestケースは増やしていません。
+
+サンプルではルートlist、型付きメタ、V2→V3→V2の保存と再読、元ファイル保持を確認しました。
+一時データでは子モデル・配列・空階層・日付・文字列の型・alias、RootModelの非マッピング出力の拒否、
+不正な文書形・キー・行・循環エイリアス・未知のスカラータグ、保存失敗時の既存ファイル保護、
+版付き混在モデルのYAML保存も確認しました。
+通常の混在モデルをYamlRowsSerializerへ直接渡す方法、既存コメント継承、テンプレート、追記は対象外です。
+
+全体テスト313件成功、Pyrightはエラー0・警告0、故意の型誤り5ファイルも期待件数どおりです。
+最低依存環境の初回には、実行中の大きな待ち時間とともに既存の同時保存テストでロック待ち失敗がありました。
+そのテストは単独再実行で成功しています。排他制御の回避や待機設定の変更は行っていません。
+
+最低依存環境の全体再実行は270件成功・Excel未導入による4件スキップでした（17.77秒）。初回のロック待ち失敗の原因は断定せず、上記の再確認結果を記録しています。

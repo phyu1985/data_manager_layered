@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from DataManager import (
     ConfigurationError, CsvOptions, CsvKeyValueHeaderOptions, CsvSerializer,
     JSONLLoadOptions, JsonlSerializer, RowsDocument, RowsFileService,
-    RowsRepository, SerializationError,
+    RowsRepository, SerializationError, VersionConverter, VersionedRowsRepository,
 )
 
 
@@ -275,6 +275,25 @@ def test_jsonl_append_preserves_metadata_and_mixed_model_identity(tmp_path: Path
     assert restored.metadata == document.metadata
     assert restored.rows == [*document.rows, Event(message="checked")]
     assert type(restored.rows[1]) is Event
+
+    raw = RowsRepository(model=dict, base_directory=tmp_path)
+    model_tags: dict[type[Measurement | Event], str] = {Measurement: "measurement", Event: "event"}
+    versioned = VersionedRowsRepository.for_models(
+        repository=raw, converter=VersionConverter(current_version=4, upcasts={}, downcasts={}),
+        metadata_model=Metadata, model_tags=model_tags,
+    )
+    raw.save_document("raw.jsonl", RowsDocument(
+        metadata=restored.metadata.model_dump(),
+        rows=[{"type": "measurement", "time": 0, "value": 1.2}, {"type": "event", "message": "checked"}],
+    ))
+    assert versioned.load("raw.jsonl") == restored
+    versioned.save("versioned.jsonl", restored)
+    assert versioned.load("versioned.jsonl") == restored
+    header = json.loads((tmp_path / "versioned.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert header["__meta__"]["models"] == ["event", "measurement"]
+    assert header["metadata"] == restored.metadata.model_dump()
+    with pytest.raises(SerializationError):
+        raw.load_document("versioned.jsonl")
 
 
 @pytest.mark.parametrize("bad_metadata", [None, [], "invalid", 1])

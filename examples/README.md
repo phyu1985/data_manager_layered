@@ -43,3 +43,9 @@ JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](../d
 ## コメント付きCSV
 
 `python -m examples.csv_comments`でi〜i5（iii_1を含む）を個別の関数から読み込みます。設定の違いと自由文からのメタ抽出は[説明](../docs/CSV_COMMENTS.md)を参照してください。
+
+V0 BlockRowsとV1 JSONL、版ごとのメタ名・版キー、単一/混在モデルの自動登録は[版付きRowsの構成](../docs/VERSIONED_ROWS.md)を参照してください。実行例はexamples/versioned_block_rows.pyです。
+
+config 0→Config.version→V1 JSONL→V0別名保存に絞った実行例は[版キー名のサンプル](../docs/VERSION_KEY_NAMES.md)を参照してください。コードはexamples/version_key_names.pyです。
+
+YAMLのルートlist、メタ付き一覧、V2/V3だけの版変換は[YAML Rowsの使い方](../docs/YAML_ROWS.md)を参照してください。実行例はexamples/yaml_rows.pyです。

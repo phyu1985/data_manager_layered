@@ -72,9 +72,9 @@ existing_textは「今回の保存先の内容」、template_textは「テンプ
 現在モデル → encode_current → {version, metadata, rows} → downcast → 保存
 ```
 
-キャストはmetaと本文を一緒に受け取ります。metaのキー変更・補完・廃止、metaの値に応じた本文の変換もその関数で記述します。途中のcastで参照する版は文書直下のversionです。入出力の境界で、その版をmetadata.versionへ揃えます。JSONLの内部schema_versionとは別の番号です。
+キャストはmetaと本文を一緒に受け取ります。metaのキー変更・補完・廃止、metaの値に応じた本文の変換もその関数で記述します。途中のcastで参照する版は文書直下のversionです。入出力の境界で、その版をメタへ記録します。既定はmetadata.versionで、metadata_version_fieldsにより旧版のverや版項目なしの形式へ合わせられます。JSONLの内部schema_versionとは別の番号です。
 
-FileServiceには通常と同じload/save/save_asを提供します。返却型はdecode_currentの返却型で決まり、metaを型付きで扱うならRowsDocument[Meta, Row]に復元します。CSVの版が文字列ならread_versionで整数へ解釈します。出力版の選択はrepository.for_version(n)です。
+FileServiceには通常と同じload/save/save_asを提供します。従来のcallback方式では返却型はdecode_currentの返却型で決まります。現在モデルを登録するfor_models方式ではRowsDocument[Meta, Row]の変換を共通処理が構成します。CSVの整数文字列の版は標準で解釈します。別表現の版だけread_versionで指定します。出力版の選択はrepository.for_version(n)です。
 
 Rowsの文書テンプレート機能は設けていません。CSVの列定義はCsvOptions、境界はCsvKeyValueHeaderOptions / CsvHeaderOptions、JSONLのmeta生成はJsonlSerializerが担当します。ブロック形式の列ヘッダーはファイルmetaとは別物であり、版番号の保存位置が定義されていない形式にmeta行を勝手に追加しません。
 
@@ -132,3 +132,5 @@ PositionalCaptureReaderはPositionalCaptureSerializerへ改名しました。位
 
 
 追加ヘッダ・半角スペース区切り・modelsの設定と単独の版変換例は、[ヘッダと版変換の実行例](HEADERS_AND_SAMPLES.md)を参照してください。
+
+V0 BlockRowsとV1 JSONL、版ごとのメタ名・版キー、単一/混在モデルの自動登録は[版付きRowsの構成](VERSIONED_ROWS.md)を参照してください。実行例はexamples/versioned_block_rows.pyです。

@@ -24,6 +24,7 @@
     "DataManager/errors.py",
     "DataManager/file_io.py",
     "DataManager/model_conversion.py",
+    "DataManager/rows_models.py",
     "DataManager/raw_readings.py",
     "DataManager/report_export.py",
     "DataManager/repositories.py",

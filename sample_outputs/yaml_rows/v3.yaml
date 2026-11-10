@@ -1,0 +1,6 @@
+metadata:
+  title: Sample
+  version: 3
+rows:
+  - name: A
+    value: 1

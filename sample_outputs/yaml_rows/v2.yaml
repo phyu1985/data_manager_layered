@@ -1,0 +1,6 @@
+metadata:
+  version: 2
+  caption: Sample
+rows:
+  - name: A
+    reading: 1

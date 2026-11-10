@@ -5,7 +5,10 @@ from typing import assert_type
 
 from pydantic import BaseModel
 
-from DataManager import FileService, ObjectRepository, RowsDocument, RowsDocumentRepository, RowsRepository, TwoTableCsvSerializer
+from DataManager import (
+    FileService, ObjectRepository, RowsDocument, RowsDocumentRepository, RowsRepository,
+    TwoTableCsvSerializer, YamlRowsSerializer,
+)
 
 
 class Metadata(BaseModel):
@@ -55,3 +58,20 @@ def accepted_two_tables(directory: Path, serializer: TwoTableCsvSerializer):
     assert_type(document.lower, list[Lower])
     service.save_as("tables-copy.csv", document)
 
+
+
+def accepted_yaml_rows(directory: Path):
+    """ YAMLでも一覧・型付きメタの推論が同じになることを確認する。
+    """
+    repository = RowsRepository(
+        model=Measurement, base_directory=directory,
+        serializers_by_extension={".yaml": YamlRowsSerializer()},
+    )
+    assert_type(repository.load("rows.yaml"), list[Measurement])
+    assert_type(
+        repository.load_document("document.yaml", metadata_model=Metadata),
+        RowsDocument[Metadata, Measurement],
+    )
+    service = FileService(repository=repository, path="rows.yaml")
+    assert_type(service.load(), list[Measurement])
+    service.save([Measurement(value=1)])

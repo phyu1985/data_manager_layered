@@ -1,0 +1,2 @@
+{"__meta__": {"schema_version": 2, "mode": "dict", "models": ["reading"]}, "metadata": {"threshold": 2.5, "version": 1}}
+{"time": 0, "value": 1.2}

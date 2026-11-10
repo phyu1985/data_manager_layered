@@ -58,7 +58,7 @@ from DataManager import ObjectRepository, RowsRepository
 6. [検証結果と、実運用までに残っていること](VALIDATION.md)
 7. [拡張形式・Rows版変換・DataFrameの使い方](docs/EXTENSION_GUIDE.md)
 8. [保存領域の初期化・共有編集権・強制引継ぎ](docs/SHARED_EDITING.md)
-9. [CSV・JSONL共通のメタ情報API](docs/METADATA.md)
+9. [CSV・JSONL・YAML共通のメタ情報API](docs/METADATA.md)
 10. [各形式の詳しい仕様・オプション・波形の接続](docs/FORMATS.md)
 11. [FileService・YAMLテンプレート・meta版変換・属性ブロック](docs/TEMPLATES_AND_VERSIONS.md)
 12. [元の説明資料・構成図・サンプルの一覧](reference/README.md)
@@ -92,3 +92,7 @@ AA・AAAの二段形式と末尾空セルは[二段CSVの使い方](docs/TWO_TAB
 
 
 JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](docs/FORMAT_OPTIONS.md)を参照してください。
+
+版付きRowsの単一/混在モデル登録、V0 BlockRowsとV1 JSONL、版ごとのメタ・版キーの扱いは[版付きRowsの構成](docs/VERSIONED_ROWS.md)を参照してください。
+
+YAMLのルートlist、メタ付き一覧、V2/V3だけの版変換は[YAML Rowsの使い方](docs/YAML_ROWS.md)を参照してください。実行例はexamples/yaml_rows.pyです。

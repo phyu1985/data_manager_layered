@@ -24,6 +24,9 @@ JsonlSerializer.for_dict(document_models=("Reading",))
 
 for_modelsとfor_dictを一つの呼出に混ぜません。document_modelsは動的importやモデル復元の指定ではなく、dict文書の識別名です。for_dict()と名前を省略すればmodels=[]になり、通常モデルを持つRepositoryへの接続は拒否します。
 
+現在モデルの登録と版変換をまとめる場合は、[VersionedRowsRepository.for_models](VERSIONED_ROWS.md)を使います。
+この入口ではJSONLのmodelsも登録表から構成するため、document_modelsを別に手書きする必要はありません。
+
 設定時には固定名の空欄・重複、接続時には許可モデルとの対応・tag衝突を確認します。実データのtag不足・未知tag・モデル値は読取時、出力データのtag衝突は保存時に確認します。確認対象が異なるため残します。
 
 内部は「対応表を準備 → メタを照合/生成 → 各行を変換」という順です。全件のloads_document / dumps / dumps_documentでは対応表を一度だけ作り、メタと全行で共有します。行ごとの対応表の再構築は行いません。Serializerを複数Repositoryで共有できるよう、操作をまたいだ共有キャッシュは持ちません。

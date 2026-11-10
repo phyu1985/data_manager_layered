@@ -72,7 +72,7 @@ classDiagram
         metadata
         rows
     }
-    RowsRepository --> RowsDocument : CSV・JSONL共通の受渡し
+    RowsRepository --> RowsDocument : CSV・JSONL・YAML共通の受渡し
     class VersionConverter {
         convert()
     }
@@ -97,3 +97,5 @@ ExcelエンジンはDataManager/Excel内に同梱しました。DomainのReportR
 CSVの先頭key,valueとJSONLの利用者メタはRowsDocumentへ揃えました。形式固有の境界はSerializerが担当し、Repositoryは業務キーを解釈しません。詳細は[メタ情報API](METADATA.md)を参照してください。
 
 ファイル入出力の窓口はFileService / FileReader / FileWriterへ揃えました。版変換はRepositoryへの委譲、加工入力はUseCase.processing、解析の編集管理はAnalysisWorkspaceです。[命名とI/Fの規則](FILE_INTERFACES.md)を参照してください。
+
+YAMLの一覧はYamlRowsSerializer、単一文書の合成はYamlSerializerへ分けています。解析・値検証はyaml_values.pyを共用します。[YAML Rows](YAML_ROWS.md)を参照してください。
