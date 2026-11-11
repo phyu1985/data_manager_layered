@@ -80,6 +80,7 @@ class FileService(Generic[Value]):
     """
 
     def __init__(self, *, repository: _FileRepository[Value], path: str | Path):
+        # 呼出側は保存先を毎回渡さずに済む。形式・版変換・排他は渡されたRepositoryが担う。
         self._reader = FileReader(repository=repository, path=path)
         self._writer = FileWriter(repository=repository, path=path)
 

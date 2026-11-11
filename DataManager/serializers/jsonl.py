@@ -302,6 +302,7 @@ class JsonlSerializer:
         """ メタ行を含むJSONL全体を、改行付き文字列として返す。
         """
         # 全件置換では古いメタ行も消えるため、ファイルの有無によらず毎回生成する。
+        # 先頭は文書の照合情報、以降は行データ。本文は入れ子の値があっても1件を1行に収める。
         models = self._prepare_models(model_binding)
         metadata_line = self._metadata_line(model_binding, models, None)
         data_lines = self._data_lines(rows, model_binding, models)

@@ -218,6 +218,7 @@ class Storage:
             previous = self._read_owner(directory)
             if previous is not None and not force:
                 raise EditConflictError(f"編集中です: {previous.user}@{previous.host} / {previous.started_at}")
+            # force時も既存プロセスは終了させない。所有者を入れ替え、旧セッションの保存を失効させる。
             write_file_atomically(self._owner_path(directory), json.dumps(owner.__dict__).encode("utf-8"))
 
         # 編集自体はOSロックを持ち続けず、節目と保存確定時に権利を検証する。
@@ -274,6 +275,7 @@ class EditSession:
         same_directory = target.parent == self._directory or (
             target.parent.exists() and self._directory.exists() and target.parent.samefile(self._directory)
         )
+        # 編集開始時に確認済みでも、保存までに強制引継ぎされ得る。置換が終わるまで再確認を保護する。
         if same_directory:
             with self._guard_sessions([self]):
                 yield

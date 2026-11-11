@@ -88,6 +88,7 @@ class YamlRowsSerializer:
         """
         if not isinstance(cast(object, metadata), dict):
             raise SerializationError("YAMLのmetadataはdictが必要です")
+        # プレーンな一覧と区別できるよう、メタ付き文書だけはmetadata/rowsの二つに包む。
         return self._dump_value({"metadata": metadata, "rows": self._encode_rows(rows, model_binding)})
 
     def loads(self, serialized_text: str, model_binding: ModelBinding[ModelValue]) -> list[ModelValue]:

@@ -248,6 +248,8 @@ class YamlSerializer:
             })
             self._merge_document(document, existing, copy_comments=True)
 
+        # 書式を保持する編集用ノードと、保存したいモデル値を分けて扱う。
+        # ここでは値を検証し、コメントや空行の復元は文書の書出し後に行う。
         data = model_binding.to_dict(value, by_alias=self._dump_options.by_alias)
         to_plain_yaml_value(data, set())
 

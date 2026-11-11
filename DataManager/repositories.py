@@ -156,6 +156,7 @@ class ObjectRepository(Generic[ModelValue]):
     def load(self, path: str | Path) -> ModelValue:
         """ ファイル内容を一度読み取り、生成時に指定した型の値へ復元する。
         """
+        # パスと形式を先に確定し、この後は同じSerializerで文字コードと復元を揃える。
         target_path, serializer = self._resolve_path_and_serializer(path)
 
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
@@ -195,6 +196,7 @@ class ObjectRepository(Generic[ModelValue]):
         target_path, serializer = self._resolve_path_and_serializer(path)
         template_text = None
 
+        # テンプレート選択がある場合、テンプレートテキストを読み込む
         selected_template = template_name if template_name is not None else self._template_name
         if selected_template is not None:
             if serializer.supports_document_merge:
@@ -306,6 +308,7 @@ class RowsRepository(Generic[ModelValue]):
     def load(self, path: str | Path) -> list[ModelValue]:
         """ 一覧ファイルを読み、指定モデルまたはdictのリストへ復元する。
         """
+        # パスと形式を先に確定し、この後は同じSerializerで文字コードと復元を揃える。
         target_path, serializer = self._resolve_path_and_serializer(path)
 
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
@@ -412,6 +415,8 @@ class RowsRepository(Generic[ModelValue]):
                 )
                 return
 
+            # 全件を読み直さず、先頭の形式情報と末尾レコードを確認して追記へ進む。
+            # 既存メタは書き換えず、新しい行だけを追加する。
             needs_separator_newline = self._validate_existing_jsonl_file(target_path, serializer)
 
             # 完全な最終行でも改行がない場合がある。次のJSONと連結しないよう補う。

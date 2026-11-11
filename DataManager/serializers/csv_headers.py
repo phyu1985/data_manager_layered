@@ -100,6 +100,8 @@ def _declared_values(text: str, options: CsvHeaderOptions, delimiter: str) -> tu
 def split_header(text: str, options: HeaderOptions, delimiter: str) -> tuple[dict[str, Any], str]:
     """ 確定した設定から読取手順を選ぶ。設定同士の組合せ検証は行わない。
     """
+    # 項目名・順序を宣言した形式と、ファイルからkey/valueを集める形式をここで分ける。
+    # 後者もセル形式かテキスト形式かを設定で選び、本文の内容からは推測しない。
     try:
         if isinstance(options, CsvHeaderOptions):
             return _declared_values(text, options, delimiter)

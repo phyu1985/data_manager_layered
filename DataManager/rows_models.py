@@ -38,6 +38,7 @@ class RowsModelCodec(Generic[MetadataValue, RowModel]):
     def decode(self, value: dict[str, Any]) -> RowsDocument[MetadataValue, RowModel]:
         """ upcast後の行だけをモデルへ復元する。旧項目はcastが処理するまで保持する。
         """
+        # 版変換済みの文書を、メタの型と各行の型へ分けて検証する。
         try:
             metadata = self._metadata.restore_value(value["metadata"])
         except ValidationError as error:
@@ -48,6 +49,7 @@ class RowsModelCodec(Generic[MetadataValue, RowModel]):
             data: dict[str, Any] = dict(raw)
             model: type[RowModel] | None = None
             if self._rows.data_mode == "mixed":
+                # 識別キーは保存用の情報なので、モデルへ渡す業務フィールドから取り除く。
                 tag = data.pop(self._tag_field, None)
                 if not isinstance(tag, str) or tag not in self._models:
                     raise SerializationError(f"現在版の{row_number}件目: {self._tag_field}に登録済みの型名が必要です")
@@ -62,6 +64,8 @@ class RowsModelCodec(Generic[MetadataValue, RowModel]):
     def encode(self, document: RowsDocument[MetadataValue, RowModel]) -> dict[str, Any]:
         """ 現在版の辞書を作る。混在モデルの識別情報もdowncastの対象へ含める。
         """
+        # cast関数が扱うキーを一定にするため、内部辞書ではフィールド名を使う。
+        # 旧版のキー名への変更は、この後のdowncastへ任せる。
         metadata = self._metadata.to_dict(document.metadata, by_alias=False)
         rows: list[dict[str, Any]] = []
         for row_number, row in enumerate(document.rows, start=1):

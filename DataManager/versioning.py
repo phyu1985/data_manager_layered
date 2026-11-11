@@ -103,6 +103,7 @@ class VersionConverter:
     def convert(self, value: DictionaryValue, *, target_version: int) -> DictionaryValue:
         """ 必要な経路を確認してから、呼出元の辞書を変更せず変換する。
         """
+        # ファイル拡張子から版を推測しない。版番号で、隣接する版の変換経路を決める。
         source_version = self.read_version(value)
         destination_version = self._validate_version(target_version)
         direction = 1 if source_version < destination_version else -1
@@ -182,6 +183,7 @@ class VersionedObjectRepository(Generic[DocumentValue]):
         source_value = self._repository.load(path)
         current_value = self._converter.to_current(source_value)
 
+        # ここから先は現在版の構造だけを扱う。過去のキーをモデル側へ持ち込まない。
         return self._decode_current(current_value)
 
     def save(
@@ -336,6 +338,7 @@ class VersionedRowsRepository(Generic[DocumentValue]):
         # 全キャストの完了後に版を揃え、meta・各行を現在モデルへ復元する。
         current = self._converter.to_current(payload)
         normalized = self._document(current)
+        # ファイル上の型名はcodecが行モデルへ対応付ける。Repositoryは具体的な型を選ばない。
         return self._decode_current({**current, "metadata": normalized.metadata, "rows": normalized.rows})
 
     def save(

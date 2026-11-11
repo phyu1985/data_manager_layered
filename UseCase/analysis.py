@@ -98,6 +98,8 @@ class AnalysisWorkspace:
     def save_settings(self, presets: AnalysisPresets, *, overwrite: bool = False):
         """ 編集中の設定だけを現在版で保存する。別出力はexport_settingsで明示する。
         """
+        # 編集対象の一致と権利を確認してから、設定ファイルだけを更新する。
+        # 測定行の保存は別操作なので、変更していないファイルを作り直さない。
         document = self._require_edit(presets)
         self._files.save_settings(presets, document.retained_values, overwrite=overwrite)
 

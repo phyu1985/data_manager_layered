@@ -180,6 +180,7 @@ class CsvSerializer:
         body = self._skip_leading_comments(serialized_text) if self._read_options.comment_prefixes else serialized_text
         if self._metadata is not None:
             metadata, body = split_header(body, self._metadata, self._read_options.delimiter)
+        # ヘッダを除いた本文だけを表として解釈し、同じ読取結果のメタと組にして返す。
         return RowsDocument(metadata=metadata, rows=self._load_rows(body, model_binding))
 
     def _match_header_line(self, line: str) -> str | None:

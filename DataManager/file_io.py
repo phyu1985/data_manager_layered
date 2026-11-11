@@ -64,6 +64,8 @@ def lock_file(path: Path, *, timeout_seconds: float) -> Generator[None, None, No
     bucket = int(hashlib.sha256(path.name.casefold().encode()).hexdigest()[:8], 16) % 64
     lock_file_path = directory / f"{bucket:02}.lock"
 
+    # ファイルの有無は施錠状態を表さない。同じファイルを次回も使い、OSロックだけを解放する。
+    # 解放時に削除すると、待機中の処理と別のロック対象を作ってしまうため残す。
     with portalocker.Lock(
         str(lock_file_path),
         mode="a",
