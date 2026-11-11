@@ -5,6 +5,7 @@ from DataManager.documents import RowsDocument
 from DataManager.file_io import lock_directory
 from DataManager.repositories import ObjectRepository, RowsRepository, RowsDocumentRepository
 from DataManager.serializers.csv import CsvSerializer
+from DataManager.serializers.number_count_csv import NumberCountCsvSerializer
 from DataManager.serializers.two_table_csv import TwoTableCsvSerializer
 from DataManager.serializers.csv_options import CsvOptions, CsvKeyValueHeaderOptions, CsvHeaderOptions, CsvHeaderField
 from DataManager.serializers.kv import KvOptions, KvSerializer
@@ -34,7 +35,7 @@ __all__ = [
     "FileService", "FileReader", "FileWriter", "RowsDocumentRepository",
     "VersionedObjectRepository", "VersionedRowsRepository",
     "ConfigurationError", "SerializationError", "ObjectRepository", "RowsRepository", "RowsDocument",
-    "CsvOptions", "CsvSerializer", "TwoTableCsvSerializer", "KvOptions", "KvSerializer", "BlockRow", "BlockRowsOptions", "BlockRowsSerializer", "AttributeBlockSerializer",
+    "CsvOptions", "CsvSerializer", "NumberCountCsvSerializer", "TwoTableCsvSerializer", "KvOptions", "KvSerializer", "BlockRow", "BlockRowsOptions", "BlockRowsSerializer", "AttributeBlockSerializer",
     "JsonDumpOptions", "JsonSerializer", "JSONLDumpOptions", "JSONLLoadOptions", "JsonlSerializer",
     "YamlDumpOptions", "YamlSerializer", "YamlRowsSerializer", "CsvKeyValueHeaderOptions", "CsvHeaderOptions", "CsvHeaderField",
     "CustomTextOptions", "CustomTextSerializer", "ObjectFileService", "RowsFileService", "WaveformFileService",

@@ -114,3 +114,5 @@ FileServiceでも`repository.for_version(0)`をそのまま渡せます。
 config 0→Config.version→V1 JSONL→V0別名保存に絞った実行例は[版キー名のサンプル](VERSION_KEY_NAMES.md)を参照してください。コードはexamples/version_key_names.pyです。
 
 YAMLのルートlist、メタ付き一覧、V2/V3だけの版変換は[YAML Rowsの使い方](YAML_ROWS.md)を参照してください。実行例はexamples/yaml_rows.pyです。
+
+j.csvのNUMBER/COUNT二表と末尾Flagを扱い、V1の混在JSONLへ変換する例は[専用CSVと版変換](NUMBER_COUNT_CSV.md)を参照してください。

@@ -204,3 +204,21 @@ header_lineは列名部分の前方一致へ変更しました。引用符外の
 一時データではメタ付きCSV、半角空白・カンマ・セミコロン、引用符内の列名、
 任意の末尾付記、本文の空白と引用符内改行、列名置換、不正な見出し・列数の拒否を確認しました。
 既存テスト313件成功、Pyrightはエラー0・警告0です。
+
+## j.csvの二表・末尾Flagと版変換（2026-11-11）
+
+NumberCountCsvSerializerを追加し、既存の共通CsvOptionsやTwoTableCsvSerializerは変更していません。
+V0の表の配置を種類付きdict一覧へ揃え、VersionedRowsRepositoryのcastとcodecで
+V1のNumberModel/CountModel、混在JSONL、V0 CSVへ相互変換します。
+COUNTの見出しにないindexは実データから読み、連番は生成しません。
+number/countは論理レコード数と照合し、保存時の不一致は呼出側で更新する方式です。
+
+実行例examples/number_count_csv.pyで実ファイルj.csvの読み込み、V1 JSONLのmodels/type、
+V0への別名保存、Flag=1/Flag=0/Flagなし、COUNT追加後の両形式への保存と再読を確認しました。
+元のj.csvは上書きせず、実行前後のバイト列も確認しています。出力見本はsample_outputs/number_count_csvです。
+
+一時データでは、引用符内の改行・空行・Flagや表名の文字列、先頭/内部/末尾の空白、
+CRLF、空の表、index不足、列名/列数/件数の不一致、Flagの重複や余分な後続データ、
+不正なメタ・V1のCSV直接出力の拒否、保存失敗時の既存ファイル保護も確認しました。
+実装・実行例のdocstringとNone戻り値表記も確認しました。新規pytestケースは追加していません。
+既存pytestは313件成功、Pyrightはエラー0・警告0、最低対応依存環境でも新サンプルが成功しています。

@@ -5,6 +5,10 @@ from typing import Any, assert_type
 
 from pydantic import BaseModel
 
+from examples.number_count_csv import (
+    NumberModel, CountModel, TableMetadata, create_repository as create_number_count_repository,
+)
+
 from DataManager import (
     FileService, ObjectRepository, RowsDocument, RowsRepository, VersionConverter,
     VersionedObjectRepository, VersionedRowsRepository,
@@ -86,3 +90,13 @@ def verify_registered_rows_types(directory: Path):
     file.save(RowsDocument(
         metadata=AnalysisMetadata(version=1), rows=[Settings(threshold=1), Note(message="checked")],
     ))
+
+
+def verify_number_count_types(directory: Path):
+    """ 実行例の混在モデルも、利用側でcastをせずに扱える。
+    """
+    repository = create_number_count_repository(directory)
+    file = FileService(repository=repository, path="current.jsonl")
+    assert_type(file.load(), RowsDocument[TableMetadata, NumberModel | CountModel])
+    legacy = FileService(repository=repository.for_version(0), path="export.csv")
+    assert_type(legacy.load(), RowsDocument[TableMetadata, NumberModel | CountModel])

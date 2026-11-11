@@ -1,0 +1,14 @@
+version 0
+number: 1
+count: 3
+
+# NUMBER TABLE
+# NUMBERINDEX, NUMBERID, NAME
+0,1,"taro yamada"
+
+# COUNT TABLE
+# order, value
+1,1,2
+2,3,4
+3,5,6
+Flag: 1

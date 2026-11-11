@@ -96,3 +96,5 @@ JSONL・KV・BlockRowsの設定整理と移行方法は[各形式の設定](docs
 版付きRowsの単一/混在モデル登録、V0 BlockRowsとV1 JSONL、版ごとのメタ・版キーの扱いは[版付きRowsの構成](docs/VERSIONED_ROWS.md)を参照してください。
 
 YAMLのルートlist、メタ付き一覧、V2/V3だけの版変換は[YAML Rowsの使い方](docs/YAML_ROWS.md)を参照してください。実行例はexamples/yaml_rows.pyです。
+
+j.csvのNUMBER/COUNT二表と末尾Flagを扱い、V1の混在JSONLへ変換する例は[専用CSVと版変換](docs/NUMBER_COUNT_CSV.md)を参照してください。
