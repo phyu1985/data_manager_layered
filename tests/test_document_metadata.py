@@ -197,8 +197,10 @@ def test_normal_csv_does_not_acquire_metadata_implicitly(tmp_path: Path):
     source = RowsRepository(
         model=Measurement, base_directory=tmp_path, serializers_by_extension={".csv": serializer},
     )
-    (tmp_path / "commented.csv").write_text("#\n# description\n#\n# time value\n0 1.2\n", encoding="utf-8")
+    (tmp_path / "commented.csv").write_text("#\n# description\n#\n#   time    value  # saved table\n0 1.2\n", encoding="utf-8")
     assert source.load_document("commented.csv") == document
+    (tmp_path / "compact.csv").write_text("# description\n#time value # comment, with extra columns\n0 1.2\n", encoding="utf-8")
+    assert source.load_document("compact.csv") == document
     repository.save_document("normalized.csv", source.load_document("commented.csv"))
     assert repository.load_document("normalized.csv") == document
 

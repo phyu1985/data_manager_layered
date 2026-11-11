@@ -13,7 +13,7 @@ from DataManager.serializers.text_header import validate_header_separator
 class CsvOptions:
     """ 一つのテーブルの規則。columnsは見出しの置換にも、列名なし入力にも使う。
 
-    comment_prefixesは先頭説明の記号。header_lineはコメントと区別する入力の列名行。
+    comment_prefixesは先頭説明の記号。header_lineは前方照合する列名部分で、末尾の付記は含めない。
     headerは列名行の有無。column_prefixはその行だけに付き、本文の値には適用しない。
     delimiterはセル、field_separatorは入れ子のキーの区切り。by_aliasは出力専用。
     """

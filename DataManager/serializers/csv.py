@@ -7,6 +7,7 @@ import csv
 from datetime import date, datetime
 from decimal import Decimal
 from io import StringIO
+import re
 from types import UnionType
 from typing import Any, Union, get_args, get_origin
 from uuid import UUID
@@ -181,6 +182,39 @@ class CsvSerializer:
             metadata, body = split_header(body, self._metadata, self._read_options.delimiter)
         return RowsDocument(metadata=metadata, rows=self._load_rows(body, model_binding))
 
+    def _match_header_line(self, line: str) -> str | None:
+        """ 列名部分を前方照合し、付記を除いたCSVの列名宣言を返す。
+        """
+        options = self._read_options
+        if options.header_line is None:
+            return None
+        expected = options.header_line.strip(" ")
+        actual = line.rstrip("\r\n").strip(" ")
+
+        # コメント記号の直後の空白は書式として扱い、#nameと# nameを同じ見出しとする。
+        prefix = options.column_prefix.rstrip(" ")
+        if prefix:
+            if not expected.startswith(prefix) or not actual.startswith(prefix):
+                return None
+            expected = expected[len(prefix):].lstrip(" ")
+            actual = actual[len(prefix):].lstrip(" ")
+
+        # 引用された列名は文字どおりに照合する。空白区切りの列間には最低1空白を要求する。
+        parts = re.findall(r'"(?:[^"]|"")*"| +|[^" ]+|"', expected)
+        pattern: list[str] = []
+        for part in parts:
+            if part.startswith('"'):
+                pattern.append(re.escape(part))
+            elif part.startswith(" "):
+                pattern.append(" +" if options.delimiter == " " else " *")
+            else:
+                literal = re.escape(part)
+                if options.delimiter != " ":
+                    delimiter = re.escape(options.delimiter)
+                    literal = literal.replace(delimiter, " *" + delimiter + " *")
+                pattern.append(literal)
+        return expected if re.match("".join(pattern), actual) is not None else None
+
     def _skip_leading_comments(self, serialized_text: str) -> str:
         """ 先頭の説明だけを飛ばす。列名行か最初の非コメント行で止める。
         """
@@ -192,7 +226,7 @@ class CsvSerializer:
                 return ""
 
             # #付き列名を説明として捨てない。メタが先なら非コメント行で読み飛ばしを終える。
-            if options.header_line is not None and line.strip() == options.header_line.strip():
+            if self._match_header_line(line) is not None:
                 return line + stream.read()
             if not line.strip() or any(line.lstrip().startswith(prefix) for prefix in options.comment_prefixes):
                 continue
@@ -209,9 +243,13 @@ class CsvSerializer:
         first = stream.readline()
         while first and not first.strip():
             first = stream.readline()
-        if options.header_line is not None and first.strip() != options.header_line.strip():
-            raise SerializationError("CSVの列名行がheader_lineと一致しません")
-        if options.header and first and options.column_prefix:
+        if options.header_line is not None:
+            matched = self._match_header_line(first)
+            if matched is None:
+                raise SerializationError("CSVの列名行がheader_lineの列名部分と前方一致しません")
+            # 実ファイルの付記は列名へ含めず、宣言した列名で本文を復元する。
+            first = matched + "\n"
+        elif options.header and first and options.column_prefix:
             if not first.startswith(options.column_prefix):
                 raise SerializationError("CSVの列名行にcolumn_prefixがありません")
             first = first[len(options.column_prefix):]
