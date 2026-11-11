@@ -21,7 +21,7 @@ repository = VersionedRowsRepository.for_models(
 `for_models`は登録表から現在モデルとの変換を構成し、JSONLのmodelsも自動で設定します。
 元のRepositoryやSerializerを変更せず、保存先・ロック・commit_guardを保持した独立コピーを使います。
 
-独自の現在文書への組み立てが必要な既存コードは、通常のコンストラクターで
+独自のRowsDocumentへの組み立てが必要な既存コードは、通常のコンストラクターで
 `decode_current / encode_current`を指定する方式をそのまま利用できます。
 
 ## メタと版番号
@@ -89,7 +89,7 @@ downcastでは逆に、typeを旧形式のkindなどへ戻したり、旧形式�
 
 現在モデルとの対応付けはfor_modelsが行うため、castは全版でdict同士の変換に集中できます。
 castへ渡す現在版のdictはモデルのフィールド名（by_alias=False）で統一します。別の組み立てが必要なら従来のdecode_current / encode_currentを使います。
-明示的なunion型の対応表を渡すと、Pylanceも返り値を
+明示的なunion型の対応表を渡すと、Pylanceもload_documentの返り値を
 `RowsDocument[CaptureMetadata, Reading | Note]`として推論できます。
 
 ## JSONLの互換性
@@ -105,9 +105,9 @@ modelsはその構成が扱う型名の一覧で、ファイル内に実際に�
 
 ## 保存の呼び方
 
-`repository.save("current.jsonl", document)`は現在版、
-`repository.for_version(0).save("export.blocks", document)`はV0で保存します。
-FileServiceでも`repository.for_version(0)`をそのまま渡せます。
+`repository.save_document("current.jsonl", document)`は現在版、
+`repository.for_version(0).save_document("export.blocks", document)`はV0で保存します。
+FileServiceではRowsDocumentRepositoryで包みます。通常のRowsと同じ構成です。詳細は[整合性と移行](INTERFACE_CONSISTENCY.md)を参照してください。
 版は保存内容、拡張子はSerializerを選びます。版指定だけで拡張子やファイル名は変更しません。
 別名保存が基本で、既存ファイルの上書きには従来どおりoverwrite=Trueが必要です。
 

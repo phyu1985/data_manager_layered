@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
+    RowsDocumentRepository,
     BlockRow, BlockRowsOptions, BlockRowsSerializer, CsvOptions, CsvSerializer,
     KvOptions, KvSerializer, FileReader, FileService,
     ObjectRepository, RowsDocument, RowsRepository, Storage,
@@ -127,16 +128,16 @@ def run(output: Path, *, include_pandas: bool = False):
         repository=raw_repository, converter=VersionConverter(current_version=1, upcasts={0: upcast}, downcasts={1: downcast}),
         decode_current=decode, encode_current=encode, read_version=lambda metadata: int(metadata.get("version", 0)),
     )
-    current = FileReader(repository=versioned_repository, path="values_header.csv").load()
+    current = FileReader(repository=RowsDocumentRepository(repository=versioned_repository, metadata_model=dict), path="values_header.csv").load()
     # 入力先のRepositoryを流用せず、出力先の構成へ同じ版変換・モデル変換を接続する。
     destination_repository = VersionedRowsRepository(
         repository=RowsRepository[dict[str, Any]](model=dict, base_directory=output),
         converter=VersionConverter(current_version=1, upcasts={0: upcast}, downcasts={1: downcast}),
         decode_current=decode, encode_current=encode,
     )
-    current_file = FileService(repository=destination_repository, path="current.jsonl")
+    current_file = FileService(repository=RowsDocumentRepository(repository=destination_repository, metadata_model=dict), path="current.jsonl")
     current_file.save(current)
-    legacy_file = FileService(repository=destination_repository.for_version(0), path="legacy.jsonl")
+    legacy_file = FileService(repository=RowsDocumentRepository(repository=destination_repository.for_version(0), metadata_model=dict), path="legacy.jsonl")
     legacy_file.save(current)
     assert legacy_file.load() == current
 

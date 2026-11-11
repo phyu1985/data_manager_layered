@@ -298,7 +298,7 @@ class CsvSerializer:
                 data = unflatten_fields(row_values, separator=options.field_separator)
                 try:
                     restored_values.append(model_binding.restore_value(data))
-                except ValidationError as error:
+                except (ValidationError, SerializationError) as error:
                     raise SerializationError(f"CSV行{reader.line_num}: {error}") from error
 
             return restored_values

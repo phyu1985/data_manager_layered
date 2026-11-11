@@ -205,6 +205,9 @@ class JsonlSerializer:
     ) -> str:
         """ 全件保存と追記に共通のメタ行を作る。モデル対応はここでは再構築しない。
         """
+        # メタなし外部JSONLの設定では、全件保存・新規追記のどちらもメタ行を生成しない。
+        if self._load_options.metadata == "absent":
+            raise ConfigurationError("JSONLの保存・追記にはmetadata='required'を使用してください")
         format_metadata = self._build_metadata(model_binding, models)
         metadata_record: dict[str, Any] = {"__meta__": format_metadata}
         # 型の照合情報と利用者の値は、同じ行の別項目に置く。版や業務キーの衝突を避ける。
@@ -213,7 +216,7 @@ class JsonlSerializer:
             format_metadata["schema_version"] = 2
             metadata_record["metadata"] = metadata
 
-        return serialize_json_object(metadata_record, ensure_ascii=False, indent=None) + "\n"
+        return serialize_json_object(metadata_record, ensure_ascii=self._dump_options.ensure_ascii, indent=None) + "\n"
 
     def validate_metadata_line(self, serialized_text: str, model_binding: ModelBinding[ModelValue]):
         """ 追記前にも同じ規則で照合し、利用者のメタは既存の行に残す。
@@ -317,9 +320,6 @@ class JsonlSerializer:
     ) -> str:
         """ 利用者メタと型の照合情報を先頭行へ保存し、本文は既存の変換へ委譲する。
         """
-        if self._load_options.metadata == "absent":
-            raise ConfigurationError("利用者メタ付きJSONLにはmetadata='required'を使用してください")
-
         models = self._prepare_models(model_binding)
         return self._metadata_line(model_binding, models, metadata) + self._data_lines(rows, model_binding, models)
 

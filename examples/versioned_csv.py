@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
+    RowsDocumentRepository,
     CsvHeaderField, CsvHeaderOptions, CsvOptions, CsvSerializer, FileReader, FileService,
     JsonlSerializer, RowsDocument, RowsRepository, VersionConverter, VersionedRowsRepository,
 )
@@ -114,17 +115,17 @@ def run(directory: Path):
         read_version=lambda metadata: int(metadata.get("version", 0)),
     )
 
-    document = FileReader(repository=legacy, path="source_v0.csv").load()
+    document = FileReader(repository=RowsDocumentRepository(repository=legacy, metadata_model=Metadata), path="source_v0.csv").load()
     assert document.metadata == Metadata(version=1, group_count=1)
     assert document.rows[0] == Reading(id=1, label="taro", reading=3)
     document.rows[0].reading = 30
 
-    output = FileService(repository=current, path="current_v1.csv")
+    output = FileService(repository=RowsDocumentRepository(repository=current, metadata_model=Metadata), path="current_v1.csv")
     output.save(document)
     assert output.load() == document
     output.save_as("current_v1.jsonl", document)
 
-    old_output = FileService(repository=legacy.for_version(0), path="export_v0.csv")
+    old_output = FileService(repository=RowsDocumentRepository(repository=legacy.for_version(0), metadata_model=Metadata), path="export_v0.csv")
     old_output.save(document)
     assert old_output.load() == document
     assert (directory / "source_v0.csv").read_bytes() == source_bytes

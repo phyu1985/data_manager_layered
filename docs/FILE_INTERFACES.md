@@ -27,7 +27,7 @@ file.save_as("another.json", value)
 
 保存先は構成時に固定します。save_asは通常の保存先を変更しません。相対パスは元のRepositoryのbase_directory基準です。通常の保存先の親へ自動的に付け足す処理はありません。既存ファイルを置換するには、どちらの保存でもoverwrite=Trueが必要です。
 
-FileServiceが扱う型はRepositoryから推論されます。BaseModel、辞書、行一覧、メタ付き文書、維持項目を含むアプリ側の文書を同じ窓口へ構成できます。ModelBindingの対象を広げたり、FileServiceが各モデルの項目を解釈したりする変更ではありません。
+FileServiceが扱う読取型と書込型はRepositoryから別々に推論されます。listを読み、tupleを含むSequenceを保存できます。BaseModel、辞書、行一覧、メタ付き文書、維持項目を含むアプリ側の文書を同じ窓口へ構成できます。ModelBindingの対象を広げたり、FileServiceが各モデルの項目を解釈したりする変更ではありません。
 
 ```python
 from pathlib import Path
@@ -68,7 +68,7 @@ document.rows
 document_file.save_as("measurements-copy.jsonl", document)
 ```
 
-メタの復元型を構成時に決めるため、利用側で毎回load_documentへ呼び分けたり、metadata_modelを指定し直したりする必要がありません。RowsDocumentRepositoryは既存のload_document/save_documentへ委譲する小さなアダプターです。Repositoryを直接使う既存の文書APIも残っています。
+メタの復元型を構成時に決めるため、利用側で毎回load_documentへ呼び分けたり、metadata_modelを指定し直したりする必要がありません。RowsDocumentRepositoryは既存のload_document/save_documentへ委譲する小さなアダプターです。Repositoryを直接使うload_document / save_documentも通常・版付きで同じ呼び方です。版付きRowsのload / saveは行一覧を扱います。[移行方法](INTERFACE_CONSISTENCY.md)を参照してください。
 
 ## 版変換も同じ窓口
 

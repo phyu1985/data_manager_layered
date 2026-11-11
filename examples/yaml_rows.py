@@ -89,12 +89,12 @@ def sample_versioned_rows(directory: Path):
         ),
         metadata_model=ReportMetadata, model_tags={Reading: "reading"},
     )
-    document = repository.load("v2.yaml")
+    document = repository.load_document("v2.yaml")
     assert document == RowsDocument(ReportMetadata(version=3, title="Sample"), [Reading(name="A", value=1)])
-    repository.save("v3.yaml", document)
-    assert repository.load("v3.yaml") == document
-    repository.for_version(2).save("export_v2.yaml", document)
-    assert repository.load("export_v2.yaml") == document
+    repository.save_document("v3.yaml", document)
+    assert repository.load_document("v3.yaml") == document
+    repository.for_version(2).save_document("export_v2.yaml", document)
+    assert repository.load_document("export_v2.yaml") == document
     assert raw.load_document("export_v2.yaml") == raw.load_document("v2.yaml")
     assert (directory / "v2.yaml").read_bytes() == original
     print("YAML V2 -> V3 -> V2:", document)

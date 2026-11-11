@@ -56,8 +56,10 @@ Rows側は元の説明コメントや引用表現の保持、テンプレート�
 行のスカラー・不正なキー・循環エイリアス・対応していない値はエラーです。
 モデルの出力も各行はdict、metadataはdictに限定し、読み戻せない形を保存しません。
 
-必要なら`YamlRowsSerializer(by_alias=True)`を明示登録します。
-メタのalias出力は既存の`save_document(metadata_by_alias=True)`を使います。
+出力設定は`YamlRowsSerializer(dump_options=YamlRowsDumpOptions(by_alias=True, indent_mapping=2, indent_sequence=4, indent_offset=2))`で指定できます。
+明示した字下げ設定はルート一覧にも適用します。設定省略時は従来の出力を保ちます。
+`YamlRowsSerializer(by_alias=True)`も利用できますが、dump_optionsとの同時指定はエラーです。
+通常のRowsRepositoryではメタのalias出力に`save_document(metadata_by_alias=True)`を使います。版付きメタのキー変更はcastへ記述します。
 RowsRepositoryへ複数のモデル型を直接指定する方法は対応していません。
 混在型を版付きで扱う場合は、dict用のRowsRepositoryと`VersionedRowsRepository.for_models`を組み合わせます。
 

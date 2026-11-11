@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
+    RowsDocumentRepository,
     FileService, JsonlSerializer, NumberCountCsvSerializer, RowsDocument, RowsRepository,
     VersionConverter, VersionedRowsRepository,
 )
@@ -86,7 +87,7 @@ def downcast_v1_to_v0(document: dict[str, Any]) -> dict[str, Any]:
     return {**document, "metadata": metadata, "rows": rows}
 
 
-def create_repository(directory: Path) -> VersionedRowsRepository[RowsDocument[TableMetadata, TableRow]]:
+def create_repository(directory: Path) -> VersionedRowsRepository[TableMetadata, TableRow]:
     """ V0の専用CSVとV1 JSONLを、同じモデル登録・版変換へ接続する。
     """
     raw = RowsRepository(
@@ -119,18 +120,18 @@ def sample_roundtrip(directory: Path):
     """
     original = SOURCE.read_bytes()
     repository = create_repository(directory)
-    document = FileService(repository=repository, path=SOURCE).load()
+    document = FileService(repository=RowsDocumentRepository(repository=repository, metadata_model=TableMetadata), path=SOURCE).load()
     assert document.metadata == TableMetadata(version=1, number=1, count=2, flag=1)
     assert document.rows == [
         NumberModel(index=0, id=1, name="taro yamada"),
         CountModel(index=1, order=1, value=2), CountModel(index=2, order=3, value=4),
     ]
 
-    FileService(repository=repository, path="current.jsonl").save(document)
-    restored = repository.load("current.jsonl")
+    FileService(repository=RowsDocumentRepository(repository=repository, metadata_model=TableMetadata), path="current.jsonl").save(document)
+    restored = repository.load_document("current.jsonl")
     assert restored == document
     assert type(restored.rows[0]) is NumberModel and type(restored.rows[1]) is CountModel
-    legacy = FileService(repository=repository.for_version(0), path="export_v0.csv")
+    legacy = FileService(repository=RowsDocumentRepository(repository=repository.for_version(0), metadata_model=TableMetadata), path="export_v0.csv")
     legacy.save(restored)
     assert legacy.load() == document
     assert (directory / "export_v0.csv").read_text(encoding="utf-8").splitlines()[-1] == "Flag: 1"
@@ -145,11 +146,11 @@ def sample_optional_flag(directory: Path):
     """ FlagなしとFlag=0を区別し、元のj.csvを変更せず保存する。
     """
     repository = create_repository(directory)
-    original = repository.load(SOURCE)
+    original = repository.load_document(SOURCE)
     for flag, filename in ((None, "without_flag.csv"), (0, "flag_zero.csv")):
         document = make_document(original.rows, flag=flag)
-        repository.for_version(0).save(filename, document)
-        assert repository.load(filename) == document
+        repository.for_version(0).save_document(filename, document)
+        assert repository.load_document(filename) == document
         text = (directory / filename).read_text(encoding="utf-8")
         records = [record for record in csv.reader(StringIO(text), skipinitialspace=True) if record]
         if flag is None:
@@ -163,15 +164,15 @@ def sample_edited_counts(directory: Path):
     """ COUNTを追加した後、件数を揃えた一文書から両形式へ保存する。
     """
     repository = create_repository(directory)
-    original = repository.load(SOURCE)
+    original = repository.load_document(SOURCE)
     document = make_document(
         [*original.rows, CountModel(index=3, order=5, value=6)], flag=original.metadata.flag,
     )
     assert document.metadata.count == 3
-    repository.save("edited.jsonl", document)
-    repository.for_version(0).save("edited_v0.csv", document)
-    assert repository.load("edited.jsonl") == document
-    assert repository.load("edited_v0.csv") == document
+    repository.save_document("edited.jsonl", document)
+    repository.for_version(0).save_document("edited_v0.csv", document)
+    assert repository.load_document("edited.jsonl") == document
+    assert repository.load_document("edited_v0.csv") == document
     assert original.metadata.count == 2
     print("Edited counts:", document.metadata)
 

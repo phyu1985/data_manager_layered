@@ -40,7 +40,7 @@ text_headerやfield_pathsのように値を引数で受け取る共通関数は�
 python -m examples.versioned_csv outputs/versioned-csv
 ```
 
-旧版と現在版のCSVヘッダをそれぞれ宣言し、同じVersionConverterとcast関数へ接続します。入力はdictで読み、metaと本文のupcastが終わってから現在モデルを生成します。現在版CSVとJSONL、旧版CSVへのdowncast出力を同じFileReader / FileServiceの呼び方で実行します。
+旧版と現在版のCSVヘッダをそれぞれ宣言し、同じVersionConverterとcast関数へ接続します。入力はdictで読み、metaと本文のupcastが終わってから現在モデルを生成します。現在版CSVとJSONL、旧版CSVへのdowncast出力を同じFileReader / FileServiceの呼び方で実行します。文書を渡す際はRowsDocumentRepositoryで包みます。[整合性と移行](INTERFACE_CONSISTENCY.md)に一覧と文書の区別をまとめています。
 
 異なる版のヘッダを、ファイル内容から自動で推測するサンプルではありません。アプリが選択した入出力先に合う構成を明示しています。count=1の意味は旧データの値として保ち、本文2行から勝手に更新しません。旧形式の空行境界例versioned_rows.pyも、例外形式の確認用として残しています。
 

@@ -21,6 +21,9 @@ data_manager_layered/
 └── reference/            # 元プロジェクトと以前の説明・図・実行例の保管
 ```
 
+Repository・ServiceのAPI変更と設定の適用範囲は、[整合性と移行](docs/INTERFACE_CONSISTENCY.md)を参照してください。
+実行例: `python -m examples.repository_interfaces outputs/repository-interfaces`。
+
 ## 最初に動かす（PowerShell）
 
 このREADMEがあるフォルダで実行します。仮想環境を有効化しない場合も、以下のようにPythonの場所を直接指定できます。

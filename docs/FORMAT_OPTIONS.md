@@ -31,7 +31,7 @@ for_modelsとfor_dictを一つの呼出に混ぜません。document_modelsは�
 
 内部は「対応表を準備 → メタを照合/生成 → 各行を変換」という順です。全件のloads_document / dumps / dumps_documentでは対応表を一度だけ作り、メタと全行で共有します。行ごとの対応表の再構築は行いません。Serializerを複数Repositoryで共有できるよう、操作をまたいだ共有キャッシュは持ちません。
 
-追記用のserialize_metadata_line / serialize_data_linesなどは単独でも呼べる入口なので、それぞれで必要な準備を行います。JSONLDumpOptions / JSONLLoadOptionsは引き続き使います。required / absentは読込形式の選択であり、absentで混在モデルを読むことは従来どおり拒否します。
+追記用のserialize_metadata_line / serialize_data_linesなどは単独でも呼べる入口なので、それぞれで必要な準備を行います。JSONLDumpOptions / JSONLLoadOptionsは引き続き使います。required / absentは読込形式の選択であり、absentは読取専用です。全件保存と追記にはrequiredの構成を用意します。absentで混在モデルを読むことも拒否します。
 
 ## KV：モードとキー一覧を別々に指定しない
 

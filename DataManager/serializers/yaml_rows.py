@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from io import StringIO
 from typing import Any, cast
 
@@ -16,6 +17,17 @@ from DataManager.model_conversion import ModelBinding, ModelValue
 from DataManager.serializers.yaml_values import load_yaml_value, to_plain_yaml_value
 
 
+@dataclass(frozen=True)
+class YamlRowsDumpOptions:
+    """ 行一覧の出力名と字下げ。テンプレート用の設定は持たない。
+    """
+
+    by_alias: bool = False
+    indent_mapping: int = 2
+    indent_sequence: int = 4
+    indent_offset: int = 2
+
+
 class YamlRowsSerializer:
     """ 一覧はlist、メタ付き一覧はmetadata/rowsを持つ一文書として保存する。
 
@@ -23,8 +35,12 @@ class YamlRowsSerializer:
     Object用YAMLのテンプレート合成・既存コメントの継承は行わない。
     """
 
-    def __init__(self, *, by_alias: bool = False):
-        self._by_alias = by_alias
+    def __init__(self, *, dump_options: YamlRowsDumpOptions | None = None, by_alias: bool | None = None):
+        # 旧来のby_alias指定も受け付けるが、設定を二か所へ分散させない。
+        if dump_options is not None and by_alias is not None:
+            raise ConfigurationError("by_aliasはdump_options内か直接指定の片方にしてください")
+        self._dump_options = dump_options or YamlRowsDumpOptions(by_alias=bool(by_alias))
+        self._explicit_dump_options = dump_options is not None
 
     @property
     def encoding(self) -> str:
@@ -43,7 +59,11 @@ class YamlRowsSerializer:
         """ 操作ごとに状態を分離し、文書内の配列を読みやすく字下げする。
         """
         handler: Any = YAML(typ="rt")
-        handler.indent(mapping=2, sequence=4, offset=2)
+        handler.indent(
+            mapping=self._dump_options.indent_mapping,
+            sequence=self._dump_options.indent_sequence,
+            offset=self._dump_options.indent_offset,
+        )
         return handler
 
     def _encode_rows(
@@ -54,7 +74,7 @@ class YamlRowsSerializer:
         self.validate_model_configuration(model_binding)
         records: list[dict[str, Any]] = []
         for row_number, row in enumerate(rows, start=1):
-            data = cast(object, model_binding.to_dict(row, by_alias=self._by_alias))
+            data = cast(object, model_binding.to_dict(row, by_alias=self._dump_options.by_alias))
             # RootModelや独自のmodel_serializerでも、保存結果を行のdictに限定する。
             if not isinstance(data, dict):
                 raise SerializationError(f"YAMLの{row_number}件目のモデル出力はdictが必要です")
@@ -68,8 +88,8 @@ class YamlRowsSerializer:
         # YAMLの出力書式を用意し、一覧の置かれる位置に応じて字下げを決める。
         output = StringIO()
         handler = self._create_yaml_handler()
-        if isinstance(plain_value, list):
-            # ルートの一覧は行頭から書き、文書内のrows配列とは字下げを分ける。
+        if isinstance(plain_value, list) and not self._explicit_dump_options:
+            # 設定省略時は従来の行頭配置を保つ。明示された字下げ設定はルートにも適用する。
             handler.indent(mapping=2, sequence=2, offset=0)
         try:
             handler.dump(plain_value, output)
@@ -131,6 +151,6 @@ class YamlRowsSerializer:
                 raise SerializationError(f"YAMLの{row_number}件目はdictが必要です")
             try:
                 rows.append(model_binding.restore_value(cast(dict[str, Any], row)))
-            except ValidationError as error:
+            except (ValidationError, SerializationError) as error:
                 raise SerializationError(f"YAMLの{row_number}件目が行モデルと一致しません: {error}") from error
         return RowsDocument(metadata=metadata, rows=rows)

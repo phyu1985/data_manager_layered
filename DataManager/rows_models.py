@@ -41,7 +41,7 @@ class RowsModelCodec(Generic[MetadataValue, RowModel]):
         # 版変換済みの文書を、メタの型と各行の型へ分けて検証する。
         try:
             metadata = self._metadata.restore_value(value["metadata"])
-        except ValidationError as error:
+        except (ValidationError, SerializationError) as error:
             raise SerializationError("現在版のメタがモデルと一致しません") from error
 
         # 各行の復元先を決め、辞書から現在版のモデルを生成する。
@@ -58,7 +58,7 @@ class RowsModelCodec(Generic[MetadataValue, RowModel]):
 
             try:
                 rows.append(self._rows.restore_value(data, model))
-            except ValidationError as error:
+            except (ValidationError, SerializationError) as error:
                 raise SerializationError(f"現在版の{row_number}件目が行モデルと一致しません") from error
         return RowsDocument(metadata=metadata, rows=rows)
 

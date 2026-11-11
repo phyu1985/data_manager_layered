@@ -4,16 +4,19 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Generic, Protocol, TypeVar, overload
+from typing import Any, Generic, Protocol, TypeVar, cast, overload, runtime_checkable
 
+from typing_extensions import TypeVar as DefaultTypeVar
+
+from DataManager.errors import ConfigurationError
 from DataManager.documents import MetadataValue, RowsDocument
 from DataManager.model_conversion import ModelValue
-from DataManager.repositories import ObjectRepository, RowsRepository
+from DataManager.repositories import ObjectRepository, RowsFileRepository
 from DataManager.waveform import WaveformArray, WaveformObject, WaveformRepository
 
-Value = TypeVar("Value")
 ReadValue = TypeVar("ReadValue", covariant=True)
 WriteValue = TypeVar("WriteValue", contravariant=True)
+ServiceWriteValue = DefaultTypeVar("ServiceWriteValue", contravariant=True, default=ReadValue)
 
 __all__ = ["FileReader", "FileWriter", "FileService",
            "ObjectFileService", "RowsFileService", "WaveformFileService"]
@@ -35,8 +38,8 @@ class _WritableFile(Protocol[WriteValue]):
         ...
 
 
-class _FileRepository(_ReadableFile[Value], _WritableFile[Value], Protocol[Value]):
-    """ 同じ型の値を読み書きできる契約。実装の継承を要求しない。
+class _FileRepository(_ReadableFile[ReadValue], _WritableFile[ServiceWriteValue], Protocol[ReadValue, ServiceWriteValue]):
+    """ 読取型と書込型を別々に保持する契約。listの読取でもSequenceの保存を許可する。
     """
 
 
@@ -73,24 +76,24 @@ class FileWriter(Generic[WriteValue]):
         self._repository.save(path, value, overwrite=overwrite)
 
 
-class FileService(Generic[Value]):
+class FileService(Generic[ReadValue, ServiceWriteValue]):
     """ 保存先を固定し、Repositoryの種類によらずload / save / save_asを提供する。
 
     値の型と変換規則はRepositoryが決め、操作はFileReader / FileWriterへ委譲する。
     """
 
-    def __init__(self, *, repository: _FileRepository[Value], path: str | Path):
+    def __init__(self, *, repository: _FileRepository[ReadValue, ServiceWriteValue], path: str | Path):
         # 呼出側は保存先を毎回渡さずに済む。形式・版変換・排他は渡されたRepositoryが担う。
         self._reader = FileReader(repository=repository, path=path)
         self._writer = FileWriter(repository=repository, path=path)
 
-    def load(self) -> Value:
+    def load(self) -> ReadValue:
         return self._reader.load()
 
-    def save(self, value: Value, *, overwrite: bool = False):
+    def save(self, value: ServiceWriteValue, *, overwrite: bool = False):
         self._writer.save(value, overwrite=overwrite)
 
-    def save_as(self, path: str | Path, value: Value, *, overwrite: bool = False):
+    def save_as(self, path: str | Path, value: ServiceWriteValue, *, overwrite: bool = False):
         self._writer.save_as(path, value, overwrite=overwrite)
 
 
@@ -122,11 +125,20 @@ class ObjectFileService(Generic[ModelValue]):
         self._repository.save(path, value, template_name=self._template_name, overwrite=overwrite)
 
 
+@runtime_checkable
+class _AppendableRows(Protocol[WriteValue]):
+    """ 追記できるRepositoryだけが提供する追加契約。
+    """
+
+    def append_jsonl(self, path: str | Path, rows: Iterable[WriteValue]):
+        ...
+
+
 class RowsFileService(Generic[ModelValue]):
     """ 一覧ファイルの全件入出力とJSONL追記を、固定した保存先へ提供する窓口。
     """
 
-    def __init__(self, *, repository: RowsRepository[ModelValue], path: str | Path):
+    def __init__(self, *, repository: RowsFileRepository[ModelValue], path: str | Path):
         self._repository = repository
         self._path = Path(path)
 
@@ -159,7 +171,7 @@ class RowsFileService(Generic[ModelValue]):
         """ CSV・JSONL共通の入口で、メタ情報と本文を一度に取得する。
         """
         if metadata_model is None:
-            return self._repository.load_document(self._path)
+            return self._repository.load_document(self._path, metadata_model=dict)
         return self._repository.load_document(self._path, metadata_model=metadata_model)
 
     def save_document(
@@ -173,7 +185,10 @@ class RowsFileService(Generic[ModelValue]):
     def append(self, rows: Iterable[ModelValue]):
         """ JSONLへ追記する。CSVなどの未対応形式ではRepositoryのエラーを返す。
         """
-        self._repository.append_jsonl(self._path, rows)
+        # 追記は版変換を伴う全件保存とは別の能力として確認する。
+        if not isinstance(self._repository, _AppendableRows):
+            raise ConfigurationError("このRepositoryはJSONL追記に対応していません")
+        cast(_AppendableRows[ModelValue], self._repository).append_jsonl(self._path, rows)
 
 
 class WaveformFileService:

@@ -1,6 +1,7 @@
 """ アプリ側のservicesモジュールで、用途別の入出力を一度だけ組み立てる例。
 """
 import argparse
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,7 +36,7 @@ class ProjectFiles:
     """
 
     settings: FileService[ApplicationSettings]
-    measurements: FileService[list[MeasurementRecord]]
+    measurements: FileService[list[MeasurementRecord], Sequence[MeasurementRecord]]
     events: RowsFileService[MeasurementEvent | AuditEvent]
 
 

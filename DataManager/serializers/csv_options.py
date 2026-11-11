@@ -15,7 +15,10 @@ class CsvOptions:
 
     comment_prefixesは先頭説明の記号。header_lineは前方照合する列名部分で、末尾の付記は含めない。
     headerは列名行の有無。column_prefixはその行だけに付き、本文の値には適用しない。
-    delimiterはセル、field_separatorは入れ子のキーの区切り。by_aliasは出力専用。
+    delimiterはセル、field_separatorは入れ子のキーの区切り。
+    読取専用はcomment_prefixes / header_line / strip_column_names /
+    allow_trailing_empty_columns / empty_as_none。by_aliasは出力専用。
+    他の項目は読書き共通。read_options / write_optionsは項目単位の合成ではなく全体の置換。
     """
 
     delimiter: str = ","

@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
+    RowsDocumentRepository,
     BlockRow, BlockRowsOptions, BlockRowsSerializer, CsvHeaderField, CsvHeaderOptions,
     FileService, JsonlSerializer, RowsDocument, RowsRepository, VersionConverter, VersionedRowsRepository,
 )
@@ -76,13 +77,13 @@ def sample_single_model(directory: Path):
     source.write_text("ver: 0\ndevice: A001\n#time\n#reading\n#\n0\n1.2\n#\n", encoding="utf-8")
     original = source.read_bytes()
 
-    document = repository.load("source.blocks")
+    document = repository.load_document("source.blocks")
     assert document == RowsDocument(CaptureMetadata(version=1, instrument="A001"), [Reading(time=0, value=1.2)])
-    FileService(repository=repository, path="current.jsonl").save(document)
-    legacy = FileService(repository=repository.for_version(0), path="export.blocks")
+    FileService(repository=RowsDocumentRepository(repository=repository, metadata_model=CaptureMetadata), path="current.jsonl").save(document)
+    legacy = FileService(repository=RowsDocumentRepository(repository=repository.for_version(0), metadata_model=CaptureMetadata), path="export.blocks")
     legacy.save(document)
     assert legacy.load() == document
-    assert repository.load("current.jsonl") == document
+    assert repository.load_document("current.jsonl") == document
     assert raw.load_document("export.blocks").metadata == {"ver": "0", "device": "A001"}
     header = json.loads((directory / "current.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert header["__meta__"]["models"] == ["reading"]
@@ -105,8 +106,8 @@ def sample_unversioned_block(directory: Path):
         metadata_version_fields={0: None},
     )
     document = RowsDocument(CaptureMetadata(version=1, instrument="A001"), [Reading(time=0, value=1.2)])
-    repository.for_version(0).save("unversioned.blocks", document)
-    assert repository.load("unversioned.blocks") == document
+    repository.for_version(0).save_document("unversioned.blocks", document)
+    assert repository.load_document("unversioned.blocks") == document
     assert raw.load_document("unversioned.blocks").metadata == {"device": "A001"}
 
 
@@ -162,14 +163,14 @@ def sample_mixed_models(directory: Path):
             {"kind": "note", "time": 1, "reading": None, "message": "checked"},
         ],
     ))
-    document = repository.load("mixed_source.blocks")
+    document = repository.load_document("mixed_source.blocks")
     assert document.rows == [Reading(time=0, value=1.2), Note(time=1, text="checked")]
-    repository.save("mixed_current.jsonl", document)
-    restored = repository.load("mixed_current.jsonl")
+    repository.save_document("mixed_current.jsonl", document)
+    restored = repository.load_document("mixed_current.jsonl")
     assert restored == document
     assert type(restored.rows[0]) is Reading and type(restored.rows[1]) is Note
-    repository.for_version(0).save("mixed_export.blocks", restored)
-    assert repository.load("mixed_export.blocks") == document
+    repository.for_version(0).save_document("mixed_export.blocks", restored)
+    assert repository.load_document("mixed_export.blocks") == document
     lines = (directory / "mixed_current.jsonl").read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[0])["__meta__"]["models"] == ["note", "reading"]
     assert json.loads(lines[1])["type"] == "reading"

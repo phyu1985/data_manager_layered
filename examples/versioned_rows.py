@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
+    RowsDocumentRepository,
     CsvOptions, CsvSerializer, FileService, JsonlSerializer,
     RowsDocument, RowsRepository, VersionConverter, VersionedRowsRepository,
     CsvKeyValueHeaderOptions,
@@ -68,11 +69,11 @@ def rows_example(directory: Path):
         converter=VersionConverter(current_version=1, upcasts={0: upcast_capture}, downcasts={1: downcast_capture}),
         metadata_model=CaptureMetadata, model_tags={Reading: "Reading"},
     )
-    source = FileService(repository=repository, path="source.csv")
+    source = FileService(repository=RowsDocumentRepository(repository=repository, metadata_model=CaptureMetadata), path="source.csv")
     document = source.load()
     assert document.metadata == CaptureMetadata(version=1, instrument="A001")
     source.save_as("current.jsonl", document)
-    legacy = FileService(repository=repository.for_version(0), path="legacy.csv")
+    legacy = FileService(repository=RowsDocumentRepository(repository=repository.for_version(0), metadata_model=CaptureMetadata), path="legacy.csv")
     legacy.save(document)
     assert legacy.load() == document
     import json

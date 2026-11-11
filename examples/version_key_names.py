@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from DataManager import (
+    RowsDocumentRepository,
     BlockRow, BlockRowsOptions, BlockRowsSerializer, CsvHeaderField, CsvHeaderOptions,
     FileService, JsonlSerializer, RowsDocument, RowsRepository, VersionConverter, VersionedRowsRepository,
 )
@@ -43,7 +44,7 @@ def downcast_config(document: dict[str, Any]) -> dict[str, Any]:
     return {**document, "metadata": {"limit": document["metadata"]["threshold"]}}
 
 
-def create_repository(directory: Path) -> VersionedRowsRepository[RowsDocument[Config, Reading]]:
+def create_repository(directory: Path) -> VersionedRowsRepository[Config, Reading]:
     """ 旧ファイルの文法、内部の版、保存時の版キー、現在モデルを接続する。
     """
     legacy = BlockRowsSerializer(options=BlockRowsOptions(
@@ -77,15 +78,15 @@ def sample_version_key_names(directory: Path):
     original = source.read_bytes()
     repository = create_repository(directory)
 
-    document = FileService(repository=repository, path="source_v0.blocks").load()
+    document = FileService(repository=RowsDocumentRepository(repository=repository, metadata_model=Config), path="source_v0.blocks").load()
     assert document.metadata == Config(version=1, threshold=2.5)
     assert document.rows == [Reading(time=0, value=1.2)]
 
-    FileService(repository=repository, path="current_v1.jsonl").save(document)
-    legacy = FileService(repository=repository.for_version(0), path="export_v0.blocks")
+    FileService(repository=RowsDocumentRepository(repository=repository, metadata_model=Config), path="current_v1.jsonl").save(document)
+    legacy = FileService(repository=RowsDocumentRepository(repository=repository.for_version(0), metadata_model=Config), path="export_v0.blocks")
     legacy.save(document)
     assert legacy.load() == document
-    assert repository.load("current_v1.jsonl") == document
+    assert repository.load_document("current_v1.jsonl") == document
     assert source.read_bytes() == original
 
     header = json.loads((directory / "current_v1.jsonl").read_text(encoding="utf-8").splitlines()[0])

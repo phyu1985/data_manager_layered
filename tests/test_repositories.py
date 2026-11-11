@@ -323,7 +323,7 @@ def test_absent_metadata_is_explicit_and_cannot_append(tmp_path):
         )},
     )
     assert external.load("external.jsonl") == [User(id="u")]
-    with pytest.raises(SerializationError):
+    with pytest.raises(ConfigurationError):
         external.append_jsonl("external.jsonl", [User(id="next")])
 
 
@@ -397,7 +397,7 @@ def test_unknown_fields_follow_model_validation_policy(tmp_path):
         id: str
 
     (tmp_path / "strict.json").write_text('{"id":"u","unknown":1}')
-    with pytest.raises(ValidationError):
+    with pytest.raises(SerializationError):
         ObjectRepository(model=Strict, base_directory=tmp_path).load("strict.json")
 
 

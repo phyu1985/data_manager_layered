@@ -366,7 +366,7 @@ class RowsRepository(Generic[ModelValue]):
         # 本文の復元は完了している。指定がある場合だけmetaもモデルで検証する。
         try:
             metadata = ModelBinding(metadata_model).restore_value(document.metadata)
-        except ValidationError as error:
+        except (ValidationError, SerializationError) as error:
             raise SerializationError(f"メタ情報のモデル検証に失敗しました: {error}") from error
 
         return RowsDocument(metadata=metadata, rows=document.rows)
@@ -475,6 +475,28 @@ class RowsRepository(Generic[ModelValue]):
             return stream.read(1) != b"\n"
 
 
+class RowsFileRepository(Protocol[ModelValue]):
+    """ 行一覧とメタ付き文書の共通契約。版変換の有無を利用側へ漏らさない。
+    """
+
+    def load(self, path: str | Path, /) -> list[ModelValue]:
+        ...
+
+    def save(self, path: str | Path, rows: Sequence[ModelValue], /, *, overwrite: bool = False):
+        ...
+
+    def load_document(
+        self, path: str | Path, /, *, metadata_model: type[MetadataValue],
+    ) -> RowsDocument[MetadataValue, ModelValue]:
+        ...
+
+    def save_document(
+        self, path: str | Path, document: RowsDocument[MetadataValue, ModelValue], /, *,
+        overwrite: bool = False, metadata_by_alias: bool = False,
+    ):
+        ...
+
+
 class RowsDocumentRepository(Generic[MetadataValue, ModelValue]):
     """ メタの復元型を構成時に固定し、通常のload/save契約へ合わせるアダプター。
 
@@ -483,7 +505,7 @@ class RowsDocumentRepository(Generic[MetadataValue, ModelValue]):
     """
 
     def __init__(
-        self, *, repository: RowsRepository[ModelValue], metadata_model: type[MetadataValue],
+        self, *, repository: RowsFileRepository[ModelValue], metadata_model: type[MetadataValue],
         metadata_by_alias: bool = False,
     ):
         self._repository = repository
@@ -494,8 +516,12 @@ class RowsDocumentRepository(Generic[MetadataValue, ModelValue]):
         return self._repository.load_document(path, metadata_model=self._metadata_binding.model_classes[0])
 
     def save(self, path: str | Path, value: RowsDocument[MetadataValue, ModelValue], *, overwrite: bool = False):
-        # 構成した型以外のメタを、実行時にも受け付けない。モデルの辞書化も一度で済ませる。
-        metadata = self._metadata_binding.to_dict(value.metadata, by_alias=self._metadata_by_alias)
-        self._repository.save_document(path, RowsDocument(metadata=metadata, rows=value.rows), overwrite=overwrite)
+        # 構成したメタ型を確認し、値はモデルのまま保存担当へ渡す。
+        # 別名への変換をここで先取りせず、Repositoryの保存方針へ一度だけ適用する。
+        if type(value.metadata) is not self._metadata_binding.model_classes[0]:
+            raise SerializationError("構成した型と異なるメタ情報は保存できません")
+        self._repository.save_document(
+            path, value, overwrite=overwrite, metadata_by_alias=self._metadata_by_alias,
+        )
 
 

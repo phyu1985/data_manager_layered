@@ -77,7 +77,7 @@ time,value
 
 従来のメタ行だけを持つ形式版1も読み込めます。その利用者メタは空辞書です。通常の`save()`は従来の形式版1、新しい`save_document()`は利用者メタを含む形式版2を生成します。この拡張前の読み込みコードは形式版2を読めません。追記は先頭メタ行を検証して保持し、本文だけを追加します。メタを変えるときは文書全体を保存してください。
 
-メタなし外部JSONLを`JSONLLoadOptions(metadata="absent")`で読む場合、`document.metadata`は空辞書です。この設定での`save_document()`は、読取設定と矛盾するためエラーにします。
+メタなし外部JSONLを`JSONLLoadOptions(metadata="absent")`で読む場合、`document.metadata`は空辞書です。この設定での`save()` / `save_document()` / 追記は、読取設定と矛盾するためエラーにします。保存にはrequiredの構成を別に用意します。
 
 ## 通常の一覧APIとの使い分け
 

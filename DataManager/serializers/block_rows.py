@@ -298,7 +298,7 @@ class BlockRowsSerializer:
             # 入れ子のAttribute等もPydanticに生成させ、Serializerにモデル型を固定しない。
             try:
                 rows.append(model_binding.restore_value(data))
-            except ValidationError as error:
+            except (ValidationError, SerializationError) as error:
                 raise SerializationError(f"複数行レコードのモデル検証に失敗しました: {error}") from error
 
         return RowsDocument(metadata=metadata, rows=rows)

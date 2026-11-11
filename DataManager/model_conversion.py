@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Generic, Literal, TypeVar, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from DataManager.errors import ConfigurationError, SerializationError
 
@@ -125,6 +125,9 @@ class ModelBinding(Generic[ModelValue]):
 
         if issubclass(selected_model_class, BaseModel):
             # 実体の生成・値の検証はPydantic、型注釈の対応付けだけをcastが担う。
-            return cast(ModelValue, selected_model_class.model_validate(data))
+            try:
+                return cast(ModelValue, selected_model_class.model_validate(data))
+            except ValidationError as error:
+                raise SerializationError(f"{selected_model_class.__name__}のモデル検証に失敗しました: {error}") from error
 
         raise ConfigurationError("復元先はBaseModelまたはdictです")

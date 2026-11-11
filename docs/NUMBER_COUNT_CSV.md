@@ -88,8 +88,8 @@ Flagの重複や後続の余分な内容はエラーです。
 
 ```python
 document = make_document(edited_rows, flag=current_document.metadata.flag)
-repository.save("edited.jsonl", document)
-repository.for_version(0).save("edited.csv", document)
+repository.save_document("edited.jsonl", document)
+repository.for_version(0).save_document("edited.csv", document)
 ```
 
 make_documentはこの実行例の「保存する文書の組み立て」です。

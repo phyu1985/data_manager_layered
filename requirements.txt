@@ -2,3 +2,4 @@ pydantic>=2.7,<3
 portalocker>=2.8,<4
 ruamel.yaml>=0.18,<0.19
 numpy>=1.26,<3
+typing_extensions>=4.12,<5

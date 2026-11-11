@@ -260,6 +260,14 @@ def test_jsonl_legacy_files_and_new_metadata_have_separate_format_versions(tmp_p
     assert header["metadata"] == {"version": 4}
     assert repository.load("current.jsonl") == rows
 
+    from DataManager import JSONLDumpOptions
+    ascii_repository = RowsRepository(
+        model=Measurement, base_directory=tmp_path,
+        serializers_by_extension={".jsonl": JsonlSerializer(dump_options=JSONLDumpOptions(ensure_ascii=True))},
+    )
+    ascii_repository.save_document("ascii.jsonl", RowsDocument(metadata={"label": "メタ"}, rows=rows))
+    assert (tmp_path / "ascii.jsonl").read_text(encoding="utf-8").isascii()
+
 
 def test_jsonl_append_preserves_metadata_and_mixed_model_identity(tmp_path: Path):
     class Event(BaseModel):
@@ -288,9 +296,12 @@ def test_jsonl_append_preserves_metadata_and_mixed_model_identity(tmp_path: Path
         metadata=restored.metadata.model_dump(),
         rows=[{"type": "measurement", "time": 0, "value": 1.2}, {"type": "event", "message": "checked"}],
     ))
-    assert versioned.load("raw.jsonl") == restored
-    versioned.save("versioned.jsonl", restored)
-    assert versioned.load("versioned.jsonl") == restored
+    assert versioned.load_document("raw.jsonl") == restored
+    versioned.save_document("versioned.jsonl", restored)
+    assert versioned.load_document("versioned.jsonl") == restored
+    assert versioned.load("versioned.jsonl") == restored.rows
+    versioned.save("rows_only.jsonl", tuple(restored.rows), metadata=restored.metadata)
+    assert versioned.load_document("rows_only.jsonl") == restored
     header = json.loads((tmp_path / "versioned.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert header["__meta__"]["models"] == ["event", "measurement"]
     assert header["metadata"] == restored.metadata.model_dump()
@@ -325,3 +336,10 @@ def test_external_jsonl_has_empty_user_metadata_and_cannot_save_metadata(tmp_pat
     assert document.rows == [Measurement(time=0, value=1.2)]
     with pytest.raises(ConfigurationError, match="required"):
         repository.save_document("output.jsonl", document)
+    with pytest.raises(ConfigurationError, match="required"):
+        repository.save("rows.jsonl", document.rows)
+    with pytest.raises(ConfigurationError, match="required"):
+        repository.append_jsonl("new.jsonl", document.rows)
+    assert not (tmp_path / "output.jsonl").exists()
+    assert not (tmp_path / "rows.jsonl").exists()
+    assert not (tmp_path / "new.jsonl").exists()

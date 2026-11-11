@@ -87,8 +87,9 @@ def test_service_preserves_missing_file_and_validation_errors(tmp_path):
     with pytest.raises(FileNotFoundError):
         service.load()
     (tmp_path / "settings.json").write_text("{}")
-    with pytest.raises(ValidationError):
+    with pytest.raises(SerializationError) as failure:
         service.load()
+    assert isinstance(failure.value.__cause__, ValidationError)
 
 
 def test_waveform_service_uses_injected_private_header_policy(tmp_path):

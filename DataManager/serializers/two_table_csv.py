@@ -98,7 +98,7 @@ class TwoTableCsvSerializer:
             return model_binding.restore_value({
                 "metadata": metadata, "upper": upper.rows, "lower": lower.rows,
             })
-        except ValidationError as error:
+        except (ValidationError, SerializationError) as error:
             raise SerializationError(f"二段CSVの文書・行モデルの検証に失敗しました: {error}") from error
 
     @staticmethod
