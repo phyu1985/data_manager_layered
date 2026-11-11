@@ -233,6 +233,7 @@ class BinaryWaveformSerializer:
     def _load_from_stream(self, source: BinaryIO, path: Path) -> WaveformObject:
         # 復号・ヘッダ解析・本体復元を同じ資源管理の中で完了させる。
         with ExitStack() as resources:
+            # 必要なら復号し、ヘッダを読み取ってから波形本体を配列へ戻す。
             stream = self._prepare_stream(source, path, resources)
             header = self._read_header(stream)
             array, channels, header_values = self._read_array(stream, header, first_sample_only=False)
@@ -278,6 +279,7 @@ class WaveformRepository:
     def load(self, path: str | Path, *, options: WaveformOptions | None = None) -> WaveformObject:
         """ ロック中に波形ファイル全体を復元する。
         """
+        # 対象パスと読取設定を確定し、この操作で使うSerializerを用意する。
         target_path = resolve_file_path(self._base_directory, path)
         serializer = BinaryWaveformSerializer(options=options or self._options)
 
@@ -287,6 +289,7 @@ class WaveformRepository:
     def peek(self, path: str | Path, *, options: WaveformOptions | None = None) -> WaveformArray:
         """ ロック中に先頭1サンプルを読み、全件読み込みより軽いプレビューを返す。
         """
+        # 対象パスと読取設定を確定し、この操作で使うSerializerを用意する。
         target_path = resolve_file_path(self._base_directory, path)
         serializer = BinaryWaveformSerializer(options=options or self._options)
 

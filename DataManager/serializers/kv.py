@@ -140,6 +140,7 @@ class KvSerializer:
     ) -> str:
         """ コメント配置に依存せず、項目と型を標準書式で保存する。
         """
+        # 標準書式で保存できる設定か確認する。入力専用の配置はそのまま書き戻さない。
         if existing_text is not None or template_text is not None:
             raise ConfigurationError("KV形式は元の文書のマージに対応しません")
         if self._options.header_keys or self._options.header_layout != "values" or self._options.key_value_separator != ":":

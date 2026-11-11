@@ -118,6 +118,8 @@ def _csv_values(text: str, options: CsvKeyValueHeaderOptions, delimiter: str) ->
     stream = StringIO(text, newline="")
     reader = csv.reader(stream, delimiter=delimiter, skipinitialspace=delimiter == " ", strict=True)
     metadata: dict[str, Any] = {}
+
+    # 指定件数または終端までメタを集め、残りのテキストを本文として返す。
     while options.row_count is None or len(metadata) < options.row_count:
         start = stream.tell()
         cells = next(reader, None)

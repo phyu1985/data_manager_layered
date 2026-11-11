@@ -133,6 +133,7 @@ class CsvSerializer:
             if not rows and model_binding.data_mode == "single":
                 columns = self._columns_for_empty_models(model_binding.model_classes[0])
 
+        # 確定した列で、全行の値を漏れなく保存できるか確認する。
         self._validate_columns(columns)
         if any(set(row) - set(columns) for row in flattened_rows):
             raise SerializationError("指定したCSV列に含まれない値があります")
@@ -167,6 +168,7 @@ class CsvSerializer:
             if metadata:
                 raise ConfigurationError("CSVメタの保存にはmetadataを構成してください")
             return self._dump_rows(rows, model_binding)
+        # 先頭メタと表の本文をそれぞれ生成し、一つのテキストへまとめる。
         header = dump_header_text(metadata, self._metadata, self._write_options.delimiter)
         return header + self._dump_rows(rows, model_binding)
 
@@ -244,6 +246,7 @@ class CsvSerializer:
         first = stream.readline()
         while first and not first.strip():
             first = stream.readline()
+        # 列名行を照合し、接頭辞や末尾の付記を外して表の読取に備える。
         if options.header_line is not None:
             matched = self._match_header_line(first)
             if matched is None:

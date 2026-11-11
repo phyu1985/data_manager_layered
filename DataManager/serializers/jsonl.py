@@ -256,6 +256,7 @@ class JsonlSerializer:
         ):
             raise SerializationError("JSONLのメタ情報がRepositoryの型・形式と一致しません")
 
+        # 形式の照合を終えたら、利用者が保存したメタ情報だけを取り出す。
         metadata = metadata_record.get("metadata", {})
         if not isinstance(metadata, dict):
             raise SerializationError("JSONLの利用者メタmetadataはオブジェクトが必要です")
@@ -293,6 +294,7 @@ class JsonlSerializer:
                     **data,
                 }
 
+            # 一件分の辞書をJSONへ変換し、行末に改行を付ける。
             serialized_line = serialize_json_object(data, ensure_ascii=self._dump_options.ensure_ascii, indent=None)
             serialized_lines.append(serialized_line + "\n")
 

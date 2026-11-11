@@ -16,6 +16,7 @@ def load_processing_presets(path: Path, raw_values: Sequence[float]) -> tuple[Pr
     source = path.resolve()
     document = FileReader(repository=create_settings_repository(source.parent), path=source.name).load()
 
+    # 設定と生データから、加工処理へ渡す入力を組み立てる。
     presets = ProcessingPresets(
         threshold=document.settings.threshold, gain=document.settings.gain, raw_values=list(raw_values),
         generate_output=document.settings.generate_output,

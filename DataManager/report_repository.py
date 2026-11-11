@@ -21,6 +21,7 @@ class ReportRepository:
         """
         destination = resolve_file_path(self._directory, path)
 
+        # CSV・JSONLは共通の行保存へ渡し、Excelだけ帳票の生成処理へ進む。
         if destination.suffix.lower() in {".csv", ".jsonl"}:
             self._rows_repository.save(destination, rows, overwrite=overwrite)
             return

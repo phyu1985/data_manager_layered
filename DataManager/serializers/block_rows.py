@@ -277,6 +277,7 @@ class BlockRowsSerializer:
             metadata, serialized_text = split_header(
                 serialized_text, self._options.metadata, self._options.delimiter,
             )
+        # 列定義とレコードを読み取り、各行の値を入れる場所を決める。
         document = self._format.loads(serialized_text)
         targets = self._row_targets(document.columns)
 
@@ -341,6 +342,7 @@ class BlockRowsSerializer:
         groups = self._options.columns
         if groups is None:
             raise ConfigurationError("複数行形式の出力には行ごとのcolumnsが必要です")
+        # 行定義から、モデル直下の項目と一覧要素に必要な件数を整理する。
         targets = self._row_targets(groups)
         counts = Counter(target for target in targets if target is not None)
         root_keys = {key for group, target in zip(groups, targets, strict=True) if target is None for key in group}
@@ -352,6 +354,7 @@ class BlockRowsSerializer:
             values = model_binding.to_dict(row, by_alias=self._options.by_alias)
             if set(values) != expected:
                 raise SerializationError("保存項目が指定された列・一覧名と一致しません")
+            # 一件のモデルを、行定義の順に並ぶセルのまとまりへ変換する。
             lists = self._list_values(values, counts)
             positions = dict.fromkeys(counts, 0)
             record: list[list[Any]] = []
@@ -369,4 +372,5 @@ class BlockRowsSerializer:
                 record.append([source[key] for key in keys])
             records.append(record)
 
+        # 列定義と組み立てた全レコードを、ブロック形式のテキストへ書き出す。
         return self._format.dumps(groups, records)

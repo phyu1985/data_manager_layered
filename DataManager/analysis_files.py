@@ -70,6 +70,7 @@ class AnalysisFiles:
             threshold=settings.threshold, gain=settings.gain, measurements=measurements,
             generate_output=settings.generate_output,
         )
+        # 処理用の値と、保存時に引き継ぐ維持項目を一組にして返す。
         return AnalysisDocument(presets, dict(document.retained_values))
 
     @staticmethod
@@ -108,6 +109,7 @@ class AnalysisFiles:
     def save_initial(self, presets: AnalysisPresets, retained_values: dict[str, Any]):
         """ 初回一式を保存し、失敗時は今回の新規データだけを削除する。
         """
+        # 初回保存の前に、一式の保存先がまだ使われていないか確認する。
         for target in (self._settings_path, self._measurements_path):
             if target.exists() or target.is_symlink():
                 raise FileExistsError(f"初回保存先に既存データがあります: {target}")

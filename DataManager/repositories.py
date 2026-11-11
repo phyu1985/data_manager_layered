@@ -159,6 +159,7 @@ class ObjectRepository(Generic[ModelValue]):
         # パスと形式を先に確定し、この後は同じSerializerで文字コードと復元を揃える。
         target_path, serializer = self._resolve_path_and_serializer(path)
 
+        # 対象ファイルをロックし、復元に使うテキストを読み込む。
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
             serialized_text = target_path.read_bytes().decode(serializer.encoding)
 
@@ -173,6 +174,7 @@ class ObjectRepository(Generic[ModelValue]):
         if Path(template_name).is_absolute():
             raise ConfigurationError("template_nameはテンプレート内の相対パスで指定してください")
 
+        # テンプレート名を実際のパスへ変換し、指定ディレクトリ内か確認する。
         template_path = (self._template_directory / template_name).resolve()
         if not template_path.is_relative_to(self._template_directory):
             raise ConfigurationError("テンプレートディレクトリ外は指定できません")
@@ -205,6 +207,7 @@ class ObjectRepository(Generic[ModelValue]):
                 raise ConfigurationError("この形式はテンプレート合成に対応しません")
             # 構成時の既定テンプレートは、合成対応形式だけに適用する。
 
+        # 保存項目を限定する場合は、その出力方法に対応したSerializerか確認する。
         if (
             not merge_existing
             and serializer.supports_document_merge
@@ -311,6 +314,7 @@ class RowsRepository(Generic[ModelValue]):
         # パスと形式を先に確定し、この後は同じSerializerで文字コードと復元を揃える。
         target_path, serializer = self._resolve_path_and_serializer(path)
 
+        # 対象ファイルをロックし、復元に使うテキストを読み込む。
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
             serialized_text = target_path.read_bytes().decode(serializer.encoding)
 
@@ -350,6 +354,7 @@ class RowsRepository(Generic[ModelValue]):
         if not isinstance(serializer, RowsDocumentSerializer):
             raise ConfigurationError("このSerializerはメタ付き文書の入出力に対応していません")
 
+        # 対象ファイルをロックし、復元に使うテキストを読み込む。
         with lock_file(target_path, timeout_seconds=self._lock_timeout_seconds):
             serialized_text = target_path.read_bytes().decode(serializer.encoding)
 
@@ -397,6 +402,7 @@ class RowsRepository(Generic[ModelValue]):
         if target_path.suffix.lower() != ".jsonl" or not isinstance(serializer, JsonlSerializer):
             raise ConfigurationError("append_jsonlはJsonlSerializerを登録した.jsonl専用です")
 
+        # 追記対象を一度だけ取り込み、空なら保存処理を終了する。
         rows_to_append = list(rows)
 
         if not rows_to_append:
@@ -438,6 +444,7 @@ class RowsRepository(Generic[ModelValue]):
 
         呼び出し元が保存先のロックを保持していることが前提。
         """
+        # 先頭メタの照合を済ませてから、末尾の状態を確認する。
         with target_path.open("rb") as stream:
             # メタなし外部JSONLには追記しない。既存形式を黙って変更しない。
             metadata_line = stream.readline()

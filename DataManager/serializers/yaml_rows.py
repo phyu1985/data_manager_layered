@@ -65,6 +65,7 @@ class YamlRowsSerializer:
         """ 書き戻せるYAML値かを確認してから文字列を生成する。
         """
         plain_value = to_plain_yaml_value(value, set())
+        # YAMLの出力書式を用意し、一覧の置かれる位置に応じて字下げを決める。
         output = StringIO()
         handler = self._create_yaml_handler()
         if isinstance(plain_value, list):
@@ -102,6 +103,7 @@ class YamlRowsSerializer:
         """ 文書の形を確定し、各行を指定モデルまたはdictへ復元する。
         """
         self.validate_model_configuration(model_binding)
+        # YAMLテキストを解析し、コメント等を持たない通常のPython値へ変換する。
         value = to_plain_yaml_value(load_yaml_value(serialized_text, self._create_yaml_handler()), set())
 
         # listはメタなし、マッピングは明示したmetadata/rowsだけを受け入れる。

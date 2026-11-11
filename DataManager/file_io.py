@@ -132,6 +132,7 @@ def read_last_nonblank_line(stream: BinaryIO) -> tuple[bytes, int]:
 
     戻り値の行は改行を含まない。JSONとしての妥当性は呼び出し元で検証する。
     """
+    # ファイル末尾から一定量ずつ読み戻し、最後の非空行を探す。
     read_position = stream.seek(0, os.SEEK_END)
     trailing_content = b""
 

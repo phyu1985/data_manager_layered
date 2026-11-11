@@ -207,6 +207,7 @@ class Storage:
     def edit(self, directory: Path, *, force: bool = False) -> Generator[EditSession, None, None]:
         """ 対象フォルダの編集権を取得し、終了時は自分の情報だけを片付ける。
         """
+        # 共有管理場所を確認し、今回の編集を識別する所有者情報を作る。
         self._check_configuration()
         directory = directory.resolve()
         owner = EditorInfo(self._resource(directory), uuid4().hex, getpass.getuser(),
@@ -293,6 +294,7 @@ class EditSession:
     def _guard_sessions(sessions: Sequence[EditSession]) -> Generator[None, None, None]:
         """ 固定順で取得し、異なるマウント表記でも同じガードを二重取得しない。
         """
+        # 必要なロックを重複なく集め、毎回同じ順序で取得する。
         guards = {session._guard_key: session._guard_path for session in sessions}
         with ExitStack() as stack:
             for key in sorted(guards):

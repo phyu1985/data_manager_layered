@@ -192,6 +192,7 @@ class VersionedObjectRepository(Generic[DocumentValue]):
     ):
         """ 通常は現在版で保存し、指定があれば旧版へ変換して別途出力する。
         """
+        # 出力版を決める。呼出時の指定、構成時の指定、現在版の順で選ぶ。
         output_version = target_version if target_version is not None else self._target_version
         if output_version is None:
             output_version = self._converter.current_version
@@ -211,6 +212,7 @@ class VersionedObjectRepository(Generic[DocumentValue]):
         if extension in configured_extensions and template_name is None:
             raise ConfigurationError(f"V{output_version}の{extension}用テンプレートが未指定です")
 
+        # 変換済みの値と選択したテンプレートを、実際のファイル保存へ渡す。
         self._repository.save(
             path, output_value, overwrite=overwrite, merge_existing=False,
             preserve_existing_comments=True, template_name=template_name,
@@ -310,6 +312,7 @@ class VersionedRowsRepository(Generic[DocumentValue]):
     def _document(self, value: DictionaryValue) -> RowsDocument[DictionaryValue, DictionaryValue]:
         """ 文書構造を確認し、出力版に合う名前でメタの版を記録する。
         """
+        # 変換結果からメタと行を取り出し、保存用の文書へ組み直す。
         metadata = dict(_require_dict(value.get("metadata")))
         raw_rows = value.get("rows")
         if not isinstance(raw_rows, list):
@@ -347,6 +350,7 @@ class VersionedRowsRepository(Generic[DocumentValue]):
     ):
         """ 現在の保存辞書へ戻し、指定時だけdowncastして文書全体を出力する。
         """
+        # 出力版を決める。呼出時の指定、構成時の指定、現在版の順で選ぶ。
         output_version = target_version if target_version is not None else self._target_version
         if output_version is None:
             output_version = self._converter.current_version

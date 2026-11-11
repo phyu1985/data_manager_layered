@@ -79,6 +79,7 @@ class AnalysisWorkspace:
             session.check()
             self._edit = _EditState(document, get_ident(), session)
 
+            # 呼出側へ編集するPresetsを渡し、withを抜けるまで現在の編集対象として管理する。
             try:
                 yield document.presets
             finally:
@@ -88,6 +89,7 @@ class AnalysisWorkspace:
     def _require_edit(self, presets: AnalysisPresets) -> AnalysisDocument:
         """ 現在の編集で取得したPresetsだけを保存対象として認める。
         """
+        # 保存要求が、現在の編集で渡したPresetsと同じスレッドから来たか確認する。
         state = self._edit
         if state is None or state.thread_id != get_ident() or state.document.presets is not presets:
             raise RuntimeError("同じスレッドの有効な編集セッションと、そのPresetsが必要です")

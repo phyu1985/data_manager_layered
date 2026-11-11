@@ -240,6 +240,7 @@ class YamlSerializer:
             path: prefix for path, (_, prefix) in self._mapping_prefixes(document, (template_text or "").splitlines(keepends=True)).items()
             if prefix and not (path == (next(iter(document), None),) and path[0] in self._dump_options.footer_fields)
         }
+        # 保存先の既存文書があれば、テンプレートへ値とコメントを重ねる。
         if existing_text is not None:
             existing = self._load_document(existing_text)
             prefixes.update({

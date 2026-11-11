@@ -44,6 +44,7 @@ class RowsModelCodec(Generic[MetadataValue, RowModel]):
         except ValidationError as error:
             raise SerializationError("現在版のメタがモデルと一致しません") from error
 
+        # 各行の復元先を決め、辞書から現在版のモデルを生成する。
         rows: list[RowModel] = []
         for row_number, raw in enumerate(value["rows"], start=1):
             data: dict[str, Any] = dict(raw)
@@ -67,6 +68,7 @@ class RowsModelCodec(Generic[MetadataValue, RowModel]):
         # cast関数が扱うキーを一定にするため、内部辞書ではフィールド名を使う。
         # 旧版のキー名への変更は、この後のdowncastへ任せる。
         metadata = self._metadata.to_dict(document.metadata, by_alias=False)
+        # 各モデルを保存用の辞書へ戻し、混在時は型識別キーも付ける。
         rows: list[dict[str, Any]] = []
         for row_number, row in enumerate(document.rows, start=1):
             data = self._rows.to_dict(row, by_alias=False)
